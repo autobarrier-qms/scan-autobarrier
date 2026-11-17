@@ -43,7 +43,9 @@
     r.ref = String(c.P || '').replace(/\s+/g, ' ').trim();
     r.qt = parseInt(c.Q, 10) || 0;
     r.po = c.K || ''; r.fournisseur = c.V || '';
-    if (c.H) {                                 /* KNAUF : lot = 3 derniers chiffres du code H ; date du lot saisie à la main */
+    if (c._fmt === 'iso15434') {                /* SEAT / VW : étiquette composée ISO 15434 (le petit Data Matrix « H… » n'est que le n° de série) */
+      r.format = 'seat'; r.serial = c['1T'] || String(c.H || '').replace(/^H/, '') || c['#num'] || ''; r.lot = r.serial; r.manque = ['dlot'];
+    } else if (c.H) {                          /* KNAUF : lot = 3 derniers chiffres du code H ; date du lot saisie à la main */
       r.format = 'knauf'; r.lot = String(c.H).replace(/\D/g, '').slice(-3); r.serial = c['#num'] || '';
       r.manque = r.dlot ? [] : ['dlot'];
     } else if (dateISO8(c['1T'])) {            /* OneTech : 1T = date du lot ; lot = n° de boîte imprimé « Box n », saisi à la main */

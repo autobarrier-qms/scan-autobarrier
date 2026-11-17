@@ -57,6 +57,7 @@ table{width:100%;border-collapse:collapse;font-size:14px}td{padding:5px 0;border
 <main id="app"></main>
 <div id="ov" class="ov hid">Envoi en cours…</div>
 <script src="parser.js"></script>
+<script src="zxing-reader.js"></script>
 <script>
 'use strict';
 /* ====================== AUTOBARRIER · module téléphone V13.21 ======================
@@ -215,6 +216,7 @@ function etape1(m) {
     '<div><label>' + lotLib + '</label><input id="f_lot" value="' + esc(lot) + '" oninput="saisi(\'lot\',this.value)"></div></div>' +
     '<div class="row"><div><label>Date du lot</label><input id="f_dlot" type="date" value="' + esc(dl) + '" oninput="saisi(\'dlot\',this.value)"></div>' +
     '<div><label>Palette (facultatif)</label><input id="f_pal" value="' + esc(S.palette || '') + '" oninput="saisi(\'palette\',this.value)"></div></div></div>' +
+    '<label class="btn sec" style="text-align:center;margin-top:0">📁 Lire une photo<input type="file" accept="image/*" class="hid" onchange="photoLue(this)"></label>' +
     '<button class="btn" id="b1" onclick="envoi1()">Envoyer l’étiquette</button><button class="btn sec" onclick="SC=null;accueil()">Annuler</button>';
   vue(h, 'Étape 1 · étiquette', { t: 'Retour', f: function () { SC = null; accueil(); } });
   btn1(); demarrerCam();
@@ -258,33 +260,42 @@ function stopCam() {
   cam = null;
 }
 function camMsg(t) { var e = $('#camMsg'); if (e) e.textContent = t; }
+/* Lecture par ZXing (cpp → WebAssembly) hébergé avec la page : Data Matrix, QR, Code 128, Code 39, PDF417… sur tous les téléphones, sans dépendre du navigateur */
+var ZX_OPT = { formats: ['DataMatrix', 'QRCode', 'Code128', 'Code39', 'Code93', 'PDF417', 'ITF', 'EAN13'], tryHarder: true, tryRotate: true, tryInvert: true, tryDownscale: true, maxNumberOfSymbols: 8 };
+var zxOK = false, zxBusy = false;
+function zxPret() {
+  if (zxOK) return true;
+  if (typeof ZXingWASM === 'undefined') return false;
+  ZXingWASM.setZXingModuleOverrides({ locateFile: function (p, pre) { return p.slice(-5) === '.wasm' ? 'zxing_reader.wasm' : pre + p; } });
+  zxOK = true; return true;
+}
 function demarrerCam() {
-  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { camMsg('Caméra indisponible : saisissez les champs à la main.'); return; }
-  navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false }).then(function (st) {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { camMsg('Caméra indisponible : utilisez « Lire une photo » ou saisissez à la main.'); return; }
+  if (!zxPret()) { camMsg('Lecteur non chargé : actualisez la page.'); return; }
+  navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false }).then(function (st) {
     var v = $('#vid'); if (!v) { st.getTracks().forEach(function (t) { t.stop(); }); return; }
     v.srcObject = st; v.play(); cam = { stream: st };
     var tr = st.getVideoTracks()[0];
     try { var cap = tr.getCapabilities && tr.getCapabilities(); if (cap && cap.focusMode && cap.focusMode.indexOf('continuous') >= 0) tr.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }); } catch (e) {}
-    if ('BarcodeDetector' in window) {
-      BarcodeDetector.getSupportedFormats().then(function (F) {
-        var want = ['qr_code', 'code_128', 'data_matrix', 'code_39', 'pdf417', 'ean_13', 'itf', 'code_93'].filter(function (f) { return F.indexOf(f) >= 0; });
-        var det = new BarcodeDetector({ formats: want }); camMsg('Visez un code-barres de l’étiquette');
-        camTimer = setInterval(function () { if (!v.videoWidth) return; det.detect(v).then(function (L) { L.forEach(function (c) { lu(c.rawValue); }); }).catch(function () {}); }, 180);
-      });
-    } else { chargerSecours(st); }
-  }).catch(function () { camMsg('Caméra refusée : autorisez-la dans le navigateur, ou saisissez à la main.'); });
+    camMsg('Visez un code de l’étiquette (Data Matrix, QR ou code-barres)');
+    var cv = document.createElement('canvas'), cx = cv.getContext('2d', { willReadFrequently: true });
+    camTimer = setInterval(function () {
+      if (zxBusy || !v.videoWidth) return; zxBusy = true;
+      var w = v.videoWidth, h = v.videoHeight, k = Math.min(1, 1280 / w); cv.width = Math.round(w * k); cv.height = Math.round(h * k);
+      cx.drawImage(v, 0, 0, cv.width, cv.height);
+      ZXingWASM.readBarcodes(cx.getImageData(0, 0, cv.width, cv.height), ZX_OPT).then(function (L) { L.forEach(function (c) { if (c.isValid !== false && c.text) lu(c.text); }); zxBusy = false; }).catch(function () { zxBusy = false; });
+    }, 220);
+  }).catch(function () { camMsg('Caméra refusée : autorisez-la dans le navigateur, ou utilisez « Lire une photo ».'); });
 }
-function chargerSecours(st) {   /* navigateurs sans BarcodeDetector : bibliothèque html5-qrcode (lecture dans la page) */
-  camMsg('Chargement du lecteur de secours…');
-  var s = document.createElement('script'); s.src = 'https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js';
-  s.onload = function () {
-    st.getTracks().forEach(function (t) { t.stop(); });
-    var box = document.querySelector('.cam'); box.innerHTML = '<div id="h5" style="width:100%"></div>';
-    var h5 = new Html5Qrcode('h5'); cam = { h5: h5 };
-    h5.start({ facingMode: 'environment' }, { fps: 8, qrbox: { width: 260, height: 160 } }, function (t) { lu(t); }, function () {}).catch(function () { box.innerHTML = '<div class="msg" style="position:static">Caméra indisponible : saisissez à la main.</div>'; });
-  };
-  s.onerror = function () { camMsg('Lecteur de secours indisponible : saisissez à la main.'); };
-  document.head.appendChild(s);
+/* lecture d'une photo déjà prise (ou d'un fichier image) : utile si la caméra en direct ne fait pas la mise au point sur un petit code */
+function photoLue(inp) {
+  var f = inp.files && inp.files[0]; if (!f || !zxPret()) return;
+  camMsg('Lecture de la photo…');
+  ZXingWASM.readBarcodes(f, ZX_OPT).then(function (L) {
+    var n = 0; L.forEach(function (c) { if (c.text) { lastRaw = ''; lastT = 0; n++; lu(c.text); } });
+    camMsg(n ? n + ' code(s) lu(s) sur la photo' : 'Aucun code lisible sur cette photo : rapprochez-vous, évitez les reflets.');
+  }).catch(function () { camMsg('Photo illisible.'); });
+  inp.value = '';
 }
 function lu(raw) {
   var now = Date.now(); if (!raw || (raw === lastRaw && now - lastT < 2500)) return;
