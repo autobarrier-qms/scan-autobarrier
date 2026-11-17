@@ -1,0 +1,369 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#16253D">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<title>AUTOBARRIER · Scan boîtes</title>
+<style>
+:root{--bleu:#16253D;--acc:#1F6FEB;--ok:#1B7F4B;--ko:#B3261E;--or:#B25E09;--bg:#F3F5F9;--c:#fff;--tx:#16253D;--mu:#5B6B82;--li:#D5DBE6}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+header{position:sticky;top:0;z-index:5;background:var(--bleu);color:#fff;padding:10px 16px;display:flex;align-items:center;gap:10px}
+header b{font-size:17px;letter-spacing:.3px}header small{opacity:.75;display:block;font-size:12px}
+header .sp{flex:1}header button{background:transparent;border:1px solid #ffffff55;color:#fff;border-radius:8px;padding:6px 10px;font-size:13px}
+main{padding:14px 16px 90px;max-width:560px;margin:0 auto}
+h2{font-size:19px;margin:6px 0 4px}.sub{color:var(--mu);margin:0 0 12px;font-size:14px}
+.card{background:var(--c);border:1px solid var(--li);border-radius:14px;padding:14px;margin:0 0 12px}
+label{display:block;font-size:13px;color:var(--mu);margin:10px 0 4px;font-weight:600}
+input,select{width:100%;font:inherit;padding:13px 12px;border:1.5px solid var(--li);border-radius:10px;background:#fff;color:var(--tx)}
+input:focus,select:focus{outline:none;border-color:var(--acc)}
+input[readonly]{background:#EEF1F6}
+.btn{display:block;width:100%;border:0;border-radius:12px;padding:16px;font:inherit;font-weight:700;font-size:17px;background:var(--acc);color:#fff;margin:10px 0 0}
+.btn.ok{background:var(--ok)}.btn.ko{background:var(--ko)}.btn.sec{background:#fff;color:var(--tx);border:1.5px solid var(--li)}
+.btn[disabled]{opacity:.4}
+.row{display:flex;gap:10px}.row>*{flex:1}
+.mis{display:block;width:100%;text-align:left;background:#fff;border:1.5px solid var(--li);border-radius:12px;padding:14px;margin:0 0 10px;font:inherit}
+.mis b{display:block;font-size:16px}.mis span{color:var(--mu);font-size:13px}
+.err{background:#FDECEA;border:1px solid #F3B9B4;color:#7A1510;border-radius:10px;padding:10px 12px;margin:10px 0;font-size:14px}
+.inf{background:#E8F1FE;border:1px solid #BCD3F8;color:#12407F;border-radius:10px;padding:10px 12px;margin:10px 0;font-size:14px}
+.warn{background:#FFF4E0;border:1px solid #F0CF98;color:#6B3F05;border-radius:10px;padding:10px 12px;margin:10px 0;font-size:14px}
+.okb{background:#E6F5EC;border:1px solid #A9D9BD;color:#0E4F2D;border-radius:10px;padding:10px 12px;margin:10px 0;font-size:14px}
+.steps{display:flex;gap:6px;margin:0 0 12px}.steps i{flex:1;height:6px;border-radius:3px;background:var(--li)}.steps i.on{background:var(--acc)}.steps i.fait{background:var(--ok)}
+.steplab{font-size:13px;color:var(--mu);margin:0 0 8px}
+.cam{position:relative;background:#000;border-radius:14px;overflow:hidden;aspect-ratio:4/3}
+.cam video{width:100%;height:100%;object-fit:cover}
+.cam .vis{position:absolute;inset:18% 8%;border:2px solid #fff9;border-radius:10px;pointer-events:none}
+.cam .msg{position:absolute;left:0;right:0;bottom:0;background:#000a;color:#fff;font-size:13px;padding:6px 10px}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0}
+.chip{background:#E6F5EC;border:1px solid #A9D9BD;color:#0E4F2D;border-radius:20px;padding:5px 10px;font-size:13px}
+.chip.x{background:#EEF1F6;border-color:var(--li);color:var(--mu)}
+table{width:100%;border-collapse:collapse;font-size:14px}td{padding:5px 0;border-bottom:1px solid var(--li);vertical-align:top}td:first-child{color:var(--mu);width:42%}
+.bx{border:1.5px solid var(--li);border-radius:12px;padding:12px;margin:0 0 10px;background:#fff}
+.bx .t{display:flex;justify-content:space-between;gap:8px;font-weight:700}
+.tag{font-size:12px;border-radius:12px;padding:2px 8px;font-weight:700}.tag.o{background:#FFF4E0;color:#6B3F05}.tag.v{background:#E6F5EC;color:#0E4F2D}.tag.g{background:#EEF1F6;color:var(--mu)}.tag.r{background:#FDECEA;color:#7A1510}
+.pad{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:10px 0}
+.pad button{padding:16px 0;font-size:22px;font-weight:700;border-radius:12px;border:1.5px solid var(--li);background:#fff;color:var(--tx)}
+.big{font-size:44px;font-weight:800;text-align:center;margin:4px 0}
+.mini{font-size:12px;color:var(--mu)}
+.hid{display:none!important}
+.ov{position:fixed;inset:0;background:#16253DCC;display:flex;align-items:center;justify-content:center;z-index:20;color:#fff;font-weight:700}
+</style>
+</head>
+<body>
+<header><div><b>AUTOBARRIER</b><small id="hSub">Scan des boîtes</small></div><span class="sp"></span><button id="hBtn" class="hid"></button></header>
+<main id="app"></main>
+<div id="ov" class="ov hid">Envoi en cours…</div>
+<script src="parser.js"></script>
+<script>
+'use strict';
+/* ====================== AUTOBARRIER · module téléphone V13.21 ======================
+   Aucune donnée de production n'est conservée dans le téléphone : seuls le lien d'installation
+   (adresse + jeton + nom du téléphone) et, le temps de l'onglet, l'identité de l'opérateur.
+   Une boîte passe par : 1) l'étiquette  2) la quantité NOK  3) la clôture (boîte ou palette). */
+var LS = (function () { try { localStorage.setItem('_t', '1'); localStorage.removeItem('_t'); return localStorage; } catch (e) { return { getItem: function () { return null; }, setItem: function () {}, removeItem: function () {} }; } })();
+var SS = (function () { try { sessionStorage.setItem('_t', '1'); sessionStorage.removeItem('_t'); return sessionStorage; } catch (e) { return { getItem: function () { return null; }, setItem: function () {}, removeItem: function () {} }; } })();
+var $ = function (s) { return document.querySelector(s); };
+var esc = function (v) { return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;'); };
+var CF = { url: '', k: '', a: '' };   /* installation */
+var CFG = null;                        /* missions, opérateurs, motifs : relus du serveur à chaque ouverture */
+var OP = null;                         /* { mat, nom } */
+var MIS = null;                        /* mission choisie */
+var SC = null;                         /* boîte en cours : { champs, box } */
+var cam = null;
+
+/* ---------- installation par lien : #u=<adresse>&k=<jeton>&a=<téléphone> ---------- */
+(function () {
+  var h = location.hash.replace(/^#/, '');
+  if (h) {
+    var p = {}; h.split('&').forEach(function (x) { var i = x.indexOf('='); if (i > 0) p[x.slice(0, i)] = decodeURIComponent(x.slice(i + 1)); });
+    if (p.u && p.k) { LS.setItem('ab_cf', JSON.stringify({ url: p.u, k: p.k, a: p.a || 'TEL' })); }
+    try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {}
+  }
+  try { CF = JSON.parse(LS.getItem('ab_cf') || 'null') || CF; } catch (e) {}
+  try { OP = JSON.parse(SS.getItem('ab_op') || 'null'); } catch (e) {}
+})();
+
+/* ---------- appel au serveur : une requête texte brut, sans préparation (pas de blocage navigateur) ---------- */
+function api(act, d) {
+  var ctl = new AbortController(), to = setTimeout(function () { ctl.abort(); }, 30000);
+  var body = Object.assign({ k: CF.k, a: CF.a, act: act }, OP ? { mat: OP.mat, nom: OP.nom } : {}, d || {});
+  return fetch(CF.url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(body), signal: ctl.signal, redirect: 'follow' })
+    .then(function (r) { return r.json(); })
+    .then(function (j) { clearTimeout(to); return j; })
+    .catch(function (e) { clearTimeout(to); return { ok: false, code: 'RESEAU', err: 'Réseau indisponible ou serveur trop lent. Rien n’a été enregistré : réessayez.' }; });
+}
+function busy(on) { $('#ov').classList.toggle('hid', !on); }
+function vib(n) { try { navigator.vibrate && navigator.vibrate(n || 60); } catch (e) {} }
+function bip() { try { var a = new (window.AudioContext || window.webkitAudioContext)(), o = a.createOscillator(); o.frequency.value = 1100; o.connect(a.destination); o.start(); setTimeout(function () { o.stop(); a.close(); }, 90); } catch (e) {} }
+
+function vue(h, titre, retour) {
+  stopCam();
+  $('#app').innerHTML = h;
+  $('#hSub').textContent = titre || 'Scan des boîtes';
+  var b = $('#hBtn');
+  if (retour) { b.textContent = retour.t; b.onclick = retour.f; b.classList.remove('hid'); } else b.classList.add('hid');
+  window.scrollTo(0, 0);
+}
+function erreur(m) { return m ? '<div class="err">' + esc(m) + '</div>' : ''; }
+
+/* ---------- 0 · démarrage ---------- */
+function demarrer() {
+  if (!CF.url || !CF.k) {
+    vue('<h2>Téléphone non installé</h2><p class="sub">Ouvrez le <b>lien d’installation</b> envoyé par le responsable qualité (une seule fois). Il enregistre l’adresse du serveur et le nom de ce téléphone.</p>', 'Installation');
+    return;
+  }
+  vue('<p class="sub">Connexion au serveur…</p>', 'Connexion');
+  api('config').then(function (r) {
+    if (!r.ok) { vue('<h2>Connexion impossible</h2>' + erreur(r.err) + '<button class="btn" onclick="demarrer()">Réessayer</button>', 'Connexion'); return; }
+    CFG = r.cfg; OP ? choixMission() : identification();
+  });
+}
+
+/* ---------- 1 · identification ---------- */
+function identification(m) {
+  vue('<h2>Qui scanne ?</h2><p class="sub">Votre matricule et votre nom complet sont enregistrés avec chaque boîte.</p>' + erreur(m) +
+    '<div class="card"><label>Matricule</label><input id="mat" inputmode="text" autocomplete="off" autocapitalize="characters" value="' + esc(OP ? OP.mat : '') + '" oninput="matSaisi()">' +
+    '<label>Nom et prénom</label><input id="nom" autocomplete="off" value="' + esc(OP ? OP.nom : '') + '"><div id="matInfo" class="mini"></div></div>' +
+    '<button class="btn" onclick="idOK()">Continuer</button>', 'Identification');
+}
+function matSaisi() {
+  var m = $('#mat').value.trim().toUpperCase(), r = (CFG.operateurs || []).filter(function (x) { return x[0].toUpperCase() === m; })[0];
+  $('#matInfo').textContent = r ? 'Matricule reconnu.' : (m ? 'Matricule non reconnu : saisissez votre nom complet ; le responsable qualité vérifiera.' : '');
+  if (r) $('#nom').value = r[1];
+}
+function idOK() {
+  var m = $('#mat').value.trim().toUpperCase(), n = $('#nom').value.trim().replace(/\s+/g, ' ');
+  if (!m) return identification('Saisissez votre matricule.');
+  if (n.split(' ').length < 2) { OP = { mat: m, nom: n }; return identification('Saisissez votre nom ET votre prénom.'); }
+  OP = { mat: m, nom: n }; SS.setItem('ab_op', JSON.stringify(OP)); choixMission();
+}
+
+/* ---------- 2 · mission ---------- */
+function choixMission(m) {
+  var L = (CFG.missions || []);
+  vue('<h2>Bonjour ' + esc(OP.nom.split(' ')[0]) + '</h2><p class="sub">Choisissez la mission que vous contrôlez.</p>' + erreur(m) +
+    (L.length ? L.map(function (x, i) { return '<button class="mis" onclick="missionOK(' + i + ')"><b>' + esc(x.client) + '</b><span>' + esc(x.code) + (x.nom ? ' · ' + esc(x.nom) : '') + (x.site ? ' · ' + esc(x.site) : '') + '</span></button>'; }).join('')
+      : '<div class="warn">Aucune mission n’est ouverte au scan. Le responsable qualité doit l’activer dans la mission (option « Scan »).</div>') +
+    '<button class="btn sec" onclick="actualiser()">Actualiser la liste</button>', 'Mission', { t: 'Ce n’est pas moi', f: function () { OP = null; SS.removeItem('ab_op'); identification(); } });
+}
+function actualiser() { SC = null; demarrer(); }
+function missionOK(i) { MIS = CFG.missions[i]; accueil(); }
+
+/* ---------- 3 · accueil : mes boîtes ---------- */
+function accueil(m, info) {
+  busy(true);
+  api('liste').then(function (r) {
+    busy(false);
+    if (!r.ok) return vue('<h2>Mes boîtes</h2>' + erreur(r.err) + '<button class="btn" onclick="accueil()">Réessayer</button>', 'Mes boîtes', { t: 'Missions', f: function () { choixMission(); } });
+    var O = r.ouvertes.filter(function (b) { return b.mission === MIS.code; }), prets = O.filter(function (b) { return b.statut === 'NOK_DECLARE' || (b.statut === 'OUVERTE' && !MIS.nokOp); });
+    var pal = {}; prets.forEach(function (b) { if (b.palette) pal[b.palette] = (pal[b.palette] || 0) + 1; });
+    var h = '<h2>' + esc(MIS.client) + '</h2><p class="sub">' + esc(MIS.code) + ' · ' + esc(OP.nom) + '</p>' + (info ? '<div class="okb">' + esc(info) + '</div>' : '') + erreur(m) +
+      '<button class="btn" onclick="nouvelle()">📷  Scanner une boîte</button>';
+    if (O.length) {
+      h += '<h2 style="margin-top:20px">Mes boîtes ouvertes (' + O.length + ')</h2><p class="sub">Vous pouvez laisser plusieurs boîtes ouvertes (par exemple pour une palette) : elles ne sont comptées qu’une fois clôturées.</p>';
+      O.forEach(function (b) {
+        var etat = b.statut === 'NOK_DECLARE' ? '<span class="tag v">NOK déclaré : ' + b.nok + '</span>' : '<span class="tag o">NOK à déclarer</span>';
+        h += '<div class="bx"><div class="t"><span>' + esc(b.ref) + '</span>' + etat + '</div><div class="mini">Qté ' + b.qt + ' · lot ' + esc(b.lot || '—') + (b.palette ? ' · palette ' + esc(b.palette) : '') + ' · ' + esc(b.tScan.slice(11, 16)) + '</div>' +
+          '<div class="row">' + (b.statut === 'OUVERTE' ? '<button class="btn" style="padding:10px;font-size:15px" onclick="etape2(\'' + b.id + '\')">Déclarer le NOK</button>' : '<button class="btn sec" style="padding:10px;font-size:15px" onclick="etape2(\'' + b.id + '\')">Modifier le NOK</button>') +
+          '<button class="btn ko" style="padding:10px;font-size:15px" onclick="annuler(\'' + b.id + '\')">Annuler</button></div></div>';
+      });
+      window.__O = O;
+      if (prets.length) {
+        h += '<div class="card"><b>Clôturer</b><p class="mini">Les boîtes dont le NOK est déclaré peuvent être clôturées ensemble.</p>';
+        Object.keys(pal).forEach(function (p) { h += '<button class="btn ok" onclick="clorePalette(\'' + esc(p) + '\')">Clôturer la palette ' + esc(p) + ' (' + pal[p] + ' boîtes)</button>'; });
+        h += '<button class="btn ' + (Object.keys(pal).length ? 'sec' : 'ok') + '" onclick="cloreToutes()">Clôturer mes ' + prets.length + ' boîte(s) prêtes</button></div>';
+      }
+    }
+    if (r.clotures.length) { h += '<h2 style="margin-top:20px">Dernières clôturées</h2>'; r.clotures.filter(function (b) { return b.mission === MIS.code; }).reverse().forEach(function (b) { h += '<div class="bx"><div class="t"><span>' + esc(b.ref) + '</span><span class="tag g">clôturée</span></div><div class="mini">Qté ' + b.qt + ' · NOK ' + (b.nok == null ? '—' : b.nok) + ' · lot ' + esc(b.lot || '—') + '</div></div>'; }); }
+    vue(h, 'Mes boîtes', { t: 'Missions', f: function () { choixMission(); } });
+  });
+}
+function annuler(id) {
+  if (!confirm('Annuler cette boîte ? Elle ne sera pas comptée.')) return;
+  busy(true); api('annuler', { id: id }).then(function (r) { busy(false); accueil(r.ok ? '' : r.err, r.ok ? 'Boîte annulée.' : ''); });
+}
+function cloreToutes() { var ids = (window.__O || []).filter(function (b) { return b.statut === 'NOK_DECLARE' || (b.statut === 'OUVERTE' && !MIS.nokOp); }).map(function (b) { return b.id; }); cloturer({ ids: ids }); }
+function clorePalette(p) { cloturer({ palette: p }); }
+function cloturer(q, apres) {
+  busy(true);
+  api('cloturer', q).then(function (r) {
+    busy(false);
+    if (r.ok) { vib([60, 60, 60]); return accueil('', r.n + ' boîte(s) clôturée(s).'); }
+    accueil(r.err + (r.boites ? ' (' + r.boites.length + ')' : ''));
+  });
+}
+
+/* ---------- 4 · étape 1 : l'étiquette ---------- */
+function nouvelle() { SC = { champs: {}, saisi: {}, box: null }; etape1(); }
+function etape1(m) {
+  var d = ABParse.deduire(SC.champs), S = SC.saisi;
+  var ref = S.ref != null ? S.ref : d.ref, qt = S.qt != null ? S.qt : (d.qt || ''), lot = S.lot != null ? S.lot : d.lot, dl = S.dlot != null ? S.dlot : d.dlot;
+  var connue = ref && (MIS.refs || []).some(function (r) { return ABParse.cleRef(r[0]) === ABParse.cleRef(ref); });
+  var fmtLib = { knauf: 'Étiquette KNAUF', onetech: 'Étiquette OneTech', seat: 'Étiquette SEAT / VW', autre: 'Étiquette' }[d.format];
+  var lotLib = d.format === 'onetech' ? 'N° de boîte (imprimé « Box n »)' : 'N° de lot';
+  var chips = Object.keys(SC.champs).filter(function (k) { return k.charAt(0) !== '_'; }).map(function (k) { return '<span class="chip">' + esc(k.charAt(0) === '#' ? 'N°' : k) + ' ✓</span>'; }).join('');
+  var h = '<div class="steps"><i class="on"></i><i></i><i></i></div><div class="steplab"><b>Étape 1 sur 3</b> · scanner l’étiquette</div>' + erreur(m) +
+    '<div class="cam"><video id="vid" playsinline muted></video><div class="vis"></div><div class="msg" id="camMsg">Démarrage de la caméra…</div></div>' +
+    '<div class="chips" id="chips">' + (chips || '<span class="chip x">Visez chaque code-barres de l’étiquette l’un après l’autre</span>') + '</div>' +
+    '<div class="card"><div class="mini" id="fmt">' + (Object.keys(SC.champs).length ? fmtLib : '') + '</div>' +
+    '<label>Référence</label><input id="f_ref" value="' + esc(ref) + '" oninput="saisi(\'ref\',this.value)">' +
+    '<div id="refEtat" class="mini">' + (ref ? (connue ? '✓ Référence connue de la mission' : '⚠ Référence inconnue : la boîte sera mise en attente pour le responsable qualité') : '') + '</div>' +
+    '<div class="row"><div><label>Quantité (SNP)</label><input id="f_qt" inputmode="numeric" value="' + esc(qt) + '" oninput="saisi(\'qt\',this.value)"></div>' +
+    '<div><label>' + lotLib + '</label><input id="f_lot" value="' + esc(lot) + '" oninput="saisi(\'lot\',this.value)"></div></div>' +
+    '<div class="row"><div><label>Date du lot</label><input id="f_dlot" type="date" value="' + esc(dl) + '" oninput="saisi(\'dlot\',this.value)"></div>' +
+    '<div><label>Palette (facultatif)</label><input id="f_pal" value="' + esc(S.palette || '') + '" oninput="saisi(\'palette\',this.value)"></div></div></div>' +
+    '<button class="btn" id="b1" onclick="envoi1()">Envoyer l’étiquette</button><button class="btn sec" onclick="SC=null;accueil()">Annuler</button>';
+  vue(h, 'Étape 1 · étiquette', { t: 'Retour', f: function () { SC = null; accueil(); } });
+  btn1(); demarrerCam();
+}
+function saisi(k, v) { SC.saisi[k] = v; if (k === 'ref') majRef(); btn1(); }
+function majRef() {
+  var ref = $('#f_ref').value, c = ref && (MIS.refs || []).some(function (r) { return ABParse.cleRef(r[0]) === ABParse.cleRef(ref); });
+  $('#refEtat').textContent = ref ? (c ? '✓ Référence connue de la mission' : '⚠ Référence inconnue : la boîte sera mise en attente pour le responsable qualité') : '';
+}
+function btn1() { var b = $('#b1'); if (b) b.disabled = !($('#f_ref').value.trim() && parseInt($('#f_qt').value, 10) > 0); }
+function valeurs1() {
+  var d = ABParse.deduire(SC.champs), S = SC.saisi;
+  return { ref: (S.ref != null ? S.ref : d.ref).trim(), qt: parseInt(S.qt != null ? S.qt : d.qt, 10) || 0, lot: (S.lot != null ? S.lot : d.lot).trim(), dlot: S.dlot != null ? S.dlot : d.dlot,
+    palette: (S.palette || '').trim(), serial: d.serial, format: d.format, po: d.po, fournisseur: d.fournisseur };
+}
+function envoi1() {
+  var v = valeurs1();
+  if (!v.ref || !(v.qt > 0)) return;
+  if ((v.format === 'onetech') && !v.lot && !confirm('Le n° de boîte est vide. Envoyer quand même ?')) return;
+  if ((v.format === 'knauf') && !v.dlot && !confirm('La date du lot est vide. Envoyer quand même ?')) return;
+  busy(true); stopCam();
+  api('ouvrir', { mission: MIS.code, ref: v.ref, qt: v.qt, lot: v.lot, serial: v.serial, palette: v.palette, format: v.format, tPhone: new Date().toISOString(),
+    brut: Object.keys(SC.champs).filter(function (k) { return k.charAt(0) !== '_'; }).map(function (k) { return k + '=' + SC.champs[k]; }).join(' | '),
+    champs: { dlot: v.dlot, po: v.po, fournisseur: v.fournisseur, saisieRef: SC.saisi.ref != null, saisieQt: SC.saisi.qt != null, saisieLot: SC.saisi.lot != null } }).then(function (r) {
+    busy(false);
+    if (r.ok) { vib(80); bip(); SC.box = r.box = r.boite; if (r.attente) return enAttente(r.boite); return MIS.nokOp ? etape2(r.boite.id, r.boite) : etape3(r.boite); }
+    if (r.code === 'DOUBLON') { return vue('<h2>Déjà scannée</h2><div class="warn">' + esc(r.err) + '</div><div class="card"><table><tr><td>Référence</td><td>' + esc(r.boite.ref) + '</td></tr><tr><td>Quantité</td><td>' + r.boite.qt + '</td></tr></table></div><button class="btn" onclick="accueil()">Retour à mes boîtes</button>', 'Doublon'); }
+    etape1(r.err);
+  });
+}
+function enAttente(b) {
+  vue('<h2>Boîte en attente</h2><div class="warn">La référence <b>' + esc(b.ref) + '</b> n’existe pas dans le catalogue de cette mission. La boîte est enregistrée <b>en attente</b> : le responsable qualité décide. Passez à la boîte suivante.</div><button class="btn" onclick="nouvelle()">Scanner la boîte suivante</button><button class="btn sec" onclick="accueil()">Retour</button>', 'En attente');
+}
+
+/* ---------- caméra ---------- */
+var lastRaw = '', lastT = 0, camTimer = null;
+function stopCam() {
+  if (camTimer) { clearInterval(camTimer); camTimer = null; }
+  if (cam && cam.stream) { cam.stream.getTracks().forEach(function (t) { t.stop(); }); }
+  if (cam && cam.h5) { try { cam.h5.stop().catch(function () {}); } catch (e) {} }
+  cam = null;
+}
+function camMsg(t) { var e = $('#camMsg'); if (e) e.textContent = t; }
+function demarrerCam() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { camMsg('Caméra indisponible : saisissez les champs à la main.'); return; }
+  navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false }).then(function (st) {
+    var v = $('#vid'); if (!v) { st.getTracks().forEach(function (t) { t.stop(); }); return; }
+    v.srcObject = st; v.play(); cam = { stream: st };
+    var tr = st.getVideoTracks()[0];
+    try { var cap = tr.getCapabilities && tr.getCapabilities(); if (cap && cap.focusMode && cap.focusMode.indexOf('continuous') >= 0) tr.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }); } catch (e) {}
+    if ('BarcodeDetector' in window) {
+      BarcodeDetector.getSupportedFormats().then(function (F) {
+        var want = ['qr_code', 'code_128', 'data_matrix', 'code_39', 'pdf417', 'ean_13', 'itf', 'code_93'].filter(function (f) { return F.indexOf(f) >= 0; });
+        var det = new BarcodeDetector({ formats: want }); camMsg('Visez un code-barres de l’étiquette');
+        camTimer = setInterval(function () { if (!v.videoWidth) return; det.detect(v).then(function (L) { L.forEach(function (c) { lu(c.rawValue); }); }).catch(function () {}); }, 180);
+      });
+    } else { chargerSecours(st); }
+  }).catch(function () { camMsg('Caméra refusée : autorisez-la dans le navigateur, ou saisissez à la main.'); });
+}
+function chargerSecours(st) {   /* navigateurs sans BarcodeDetector : bibliothèque html5-qrcode (lecture dans la page) */
+  camMsg('Chargement du lecteur de secours…');
+  var s = document.createElement('script'); s.src = 'https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js';
+  s.onload = function () {
+    st.getTracks().forEach(function (t) { t.stop(); });
+    var box = document.querySelector('.cam'); box.innerHTML = '<div id="h5" style="width:100%"></div>';
+    var h5 = new Html5Qrcode('h5'); cam = { h5: h5 };
+    h5.start({ facingMode: 'environment' }, { fps: 8, qrbox: { width: 260, height: 160 } }, function (t) { lu(t); }, function () {}).catch(function () { box.innerHTML = '<div class="msg" style="position:static">Caméra indisponible : saisissez à la main.</div>'; });
+  };
+  s.onerror = function () { camMsg('Lecteur de secours indisponible : saisissez à la main.'); };
+  document.head.appendChild(s);
+}
+function lu(raw) {
+  var now = Date.now(); if (!raw || (raw === lastRaw && now - lastT < 2500)) return;
+  lastRaw = raw; lastT = now;
+  if (!SC) return;
+  var n = ABParse.fusion(SC.champs, raw);
+  if (!n) return;
+  vib(40); bip(); ['ref', 'qt', 'lot', 'dlot'].forEach(function (k) { delete SC.saisi[k]; });   /* une lecture nouvelle remplace une saisie antérieure des champs lus */
+  rafraichir1();
+}
+function rafraichir1() {
+  var d = ABParse.deduire(SC.champs);
+  [['f_ref', d.ref], ['f_qt', d.qt || ''], ['f_lot', d.lot], ['f_dlot', d.dlot]].forEach(function (x) { var e = $('#' + x[0]); if (e && x[1] !== '' && document.activeElement !== e) e.value = x[1]; });
+  $('#chips').innerHTML = Object.keys(SC.champs).filter(function (k) { return k.charAt(0) !== '_'; }).map(function (k) { return '<span class="chip">' + esc(k.charAt(0) === '#' ? 'N°' : k) + ' ✓</span>'; }).join('');
+  $('#fmt').textContent = { knauf: 'Étiquette KNAUF', onetech: 'Étiquette OneTech', seat: 'Étiquette SEAT / VW', autre: 'Étiquette' }[d.format];
+  majRef(); btn1();
+}
+
+/* ---------- 5 · étape 2 : la quantité NOK ---------- */
+function etape2(id, b) {
+  b = b || (window.__O || []).filter(function (x) { return x.id === id; })[0] || SC && SC.box;
+  if (!b) return accueil();
+  SC = SC || {}; SC.box = b; SC.nok = b.nok != null ? String(b.nok) : ''; SC.mot = (b.motifs || []).map(function (m) { return { m: m.m, q: String(m.q) }; }); SC.aucun = b.nok === 0;
+  dessin2();
+}
+function dessin2(m) {
+  var b = SC.box, nok = parseInt(SC.nok, 10), motifs = CFG.motifs || [];
+  var h = '<div class="steps"><i class="fait"></i><i class="on"></i><i></i></div><div class="steplab"><b>Étape 2 sur 3</b> · quantité NOK</div>' + erreur(m) +
+    '<div class="card"><table><tr><td>Référence</td><td><b>' + esc(b.ref) + '</b></td></tr><tr><td>Quantité de la boîte</td><td><b>' + b.qt + '</b></td></tr><tr><td>Lot</td><td>' + esc(b.lot || '—') + '</td></tr></table></div>' +
+    '<div class="card"><label style="margin-top:0">Quantité NOK</label><div class="big" id="nokv">' + (SC.nok === '' ? '—' : SC.nok) + '</div><div class="pad">' +
+    [1, 2, 3, 4, 5, 6, 7, 8, 9].map(function (n) { return '<button onclick="touche(\'' + n + '\')">' + n + '</button>'; }).join('') + '<button onclick="touche(\'C\')">⌫</button><button onclick="touche(\'0\')">0</button><button onclick="aucunNok()" style="font-size:14px;background:#E6F5EC">Aucun NOK</button></div>';
+  if (nok > 0) {
+    h += '<label>Motif du défaut' + (nok > 1 ? ' (2 motifs au maximum)' : '') + '</label>';
+    var ms = SC.mot.length ? SC.mot : [{ m: '', q: String(nok) }];
+    SC.mot = ms;
+    ms.forEach(function (x, i) {
+      h += '<div class="row" style="margin-bottom:8px"><select onchange="SC.mot[' + i + '].m=this.value" style="flex:2"><option value="">— choisir —</option>' + motifs.map(function (o) { return '<option' + (o === x.m ? ' selected' : '') + '>' + esc(o) + '</option>'; }).join('') + '</select>' +
+        '<input inputmode="numeric" value="' + esc(x.q) + '" oninput="SC.mot[' + i + '].q=this.value" style="flex:1" placeholder="Qté"></div>';
+    });
+    if (ms.length < 2 && nok > 1) h += '<button class="btn sec" style="padding:10px;font-size:15px" onclick="SC.mot.push({m:\'\',q:\'\'});dessin2()">+ Un second motif</button>';
+    if (ms.length > 1) h += '<button class="btn sec" style="padding:10px;font-size:15px" onclick="SC.mot.pop();dessin2()">Retirer le second motif</button>';
+  }
+  h += '</div><button class="btn" onclick="envoi2()" ' + (SC.nok === '' ? 'disabled' : '') + '>Envoyer le NOK</button><button class="btn sec" onclick="SC=null;accueil()">Plus tard</button>';
+  vue(h, 'Étape 2 · NOK', { t: 'Retour', f: function () { SC = null; accueil(); } });
+}
+function touche(t) {
+  var v = SC.nok; SC.aucun = false;
+  if (t === 'C') v = v.slice(0, -1); else if (v.length < 4) v = (v === '0' ? '' : v) + t;
+  SC.nok = v; if (parseInt(v, 10) === 0 && v !== '') { SC.nok = '0'; }
+  if (parseInt(v, 10) > 0 && SC.mot.length === 1 && SC.mot.length) SC.mot[0].q = v;
+  if (!(parseInt(v, 10) > 0)) SC.mot = [];
+  dessin2();
+}
+function aucunNok() { SC.nok = '0'; SC.aucun = true; SC.mot = []; dessin2(); }
+function envoi2() {
+  var nok = parseInt(SC.nok, 10); if (isNaN(nok)) return;
+  if (nok === 0 && !SC.aucun) return dessin2('Appuyez sur « Aucun NOK » pour confirmer qu’il n’y a aucun défaut.');
+  busy(true);
+  api('nok', { id: SC.box.id, nok: nok, aucun: nok === 0, motifs: SC.mot.map(function (x) { return { m: x.m, q: x.q }; }) }).then(function (r) {
+    busy(false);
+    if (r.ok) { vib(80); SC.box = r.boite; return etape3(r.boite); }
+    dessin2(r.err);
+  });
+}
+
+/* ---------- 6 · étape 3 : clôture ---------- */
+function etape3(b) {
+  SC = SC || {}; SC.box = b;
+  var mot = (b.motifs || []).map(function (m) { return esc(m.m) + ' × ' + m.q; }).join(' ; ');
+  vue('<div class="steps"><i class="fait"></i><i class="fait"></i><i class="on"></i></div><div class="steplab"><b>Étape 3 sur 3</b> · clôture</div>' +
+    '<div class="card"><table><tr><td>Référence</td><td><b>' + esc(b.ref) + '</b></td></tr><tr><td>Quantité</td><td>' + b.qt + '</td></tr><tr><td>NOK</td><td><b>' + (b.nok == null ? 'non demandé' : b.nok) + '</b>' + (mot ? ' · ' + mot : '') + '</td></tr><tr><td>Lot</td><td>' + esc(b.lot || '—') + '</td></tr>' + (b.palette ? '<tr><td>Palette</td><td>' + esc(b.palette) + '</td></tr>' : '') + '<tr><td>Équipe</td><td>' + esc(b.equipe) + ' · ' + esc(b.date) + '</td></tr></table></div>' +
+    '<div class="inf">Après la clôture, vous ne pouvez plus modifier cette boîte : seul le responsable qualité peut la rouvrir.</div>' +
+    '<button class="btn ok" onclick="cloturer({ids:[SC.box.id]})">Clôturer cette boîte</button>' +
+    (b.palette ? '<button class="btn sec" onclick="clorePalette(\'' + esc(b.palette) + '\')">Clôturer toute la palette ' + esc(b.palette) + '</button>' : '') +
+    '<button class="btn sec" onclick="nouvelle()">Laisser ouverte et scanner la suivante</button>', 'Étape 3 · clôture', { t: 'Mes boîtes', f: function () { SC = null; accueil(); } });
+}
+
+if ('serviceWorker' in navigator) { try { navigator.serviceWorker.register('sw.js'); } catch (e) {} }
+demarrer();
+</script>
+</body>
+</html>
