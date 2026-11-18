@@ -36,6 +36,7 @@ input[readonly]{background:#EEF1F6}
 .cam{position:relative;background:#000;border-radius:14px;overflow:hidden;aspect-ratio:4/3}
 .cam video{width:100%;height:100%;object-fit:cover}
 .cam .vis{position:absolute;inset:18% 8%;border:2px solid #fff9;border-radius:10px;pointer-events:none}
+.cam.lotmode .vis{inset:42% 6%;border-color:#4ade80;border-width:3px}
 .cam .msg{position:absolute;left:0;right:0;bottom:0;background:#000a;color:#fff;font-size:13px;padding:6px 10px}
 .chips{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0}
 .chip{background:#E6F5EC;border:1px solid #A9D9BD;color:#0E4F2D;border-radius:20px;padding:5px 10px;font-size:13px}
@@ -58,6 +59,7 @@ table{width:100%;border-collapse:collapse;font-size:14px}td{padding:5px 0;border
 <div id="ov" class="ov hid">Envoi en cours…</div>
 <script src="parser.js"></script>
 <script src="zxing-reader.js"></script>
+<script src="ocr_lot.js"></script>
 <script>
 'use strict';
 /* ====================== AUTOBARRIER · module téléphone V13.21 ======================
@@ -201,6 +203,7 @@ function cloturer(q, apres) {
 /* ---------- 4 · étape 1 : l'étiquette ---------- */
 function nouvelle() { SC = { champs: {}, saisi: {}, box: null }; etape1(); }
 function etape1(m) {
+  lotM = false;
   var d = ABParse.deduire(SC.champs), S = SC.saisi;
   var ref = S.ref != null ? S.ref : d.ref, qt = S.qt != null ? S.qt : (d.qt || ''), lot = S.lot != null ? S.lot : d.lot, dl = S.dlot != null ? S.dlot : d.dlot;
   var connue = ref && (MIS.refs || []).some(function (r) { return ABParse.cleRef(r[0]) === ABParse.cleRef(ref); });
@@ -217,10 +220,30 @@ function etape1(m) {
     '<div><label>' + lotLib + '</label><input id="f_lot" value="' + esc(lot) + '" oninput="saisi(\'lot\',this.value)"></div></div>' +
     '<div class="row"><div><label>Date du lot</label><input id="f_dlot" type="date" value="' + esc(dl) + '" oninput="saisi(\'dlot\',this.value)"></div>' +
     '<div><label>Palette (facultatif)</label><input id="f_pal" value="' + esc(S.palette || '') + '" oninput="saisi(\'palette\',this.value)"></div></div></div>' +
+    '<button class="btn sec" id="bLot" style="margin-top:0" onclick="lotMode()">🔢 Lire le n° de lot</button>' +
     '<label class="btn sec" style="text-align:center;margin-top:0">📁 Lire une photo<input type="file" accept="image/*" class="hid" onchange="photoLue(this)"></label>' +
     '<button class="btn" id="b1" onclick="envoi1()">Envoyer l’étiquette</button><button class="btn sec" onclick="SC=null;accueil()">Annuler</button>';
   vue(h, 'Étape 1 · étiquette', { t: 'Retour', f: function () { SC = null; accueil(); } });
   btn1(); demarrerCam();
+}
+/* lecture du n° de lot imprimé : 1er appui = cadre étroit à placer sur le numéro ; 2e appui = capture + lecture */
+var lotM = false;
+function lotMode() {
+  var cm = $('.cam'), b = $('#bLot');
+  if (!cam || !cam.stream) { camMsg('Caméra indisponible : saisissez le lot à la main.'); return; }
+  if (!lotM) { lotM = true; cm.classList.add('lotmode'); b.textContent = '📸 Capturer le n° de lot'; camMsg('Placez le n° de lot dans le cadre vert, bien net, puis touchez « Capturer »'); return; }
+  var v = $('#vid'); if (!v || !v.videoWidth) return;
+  b.disabled = true; camMsg('Lecture du n° de lot… (la 1re fois, un module est téléchargé)');
+  var W = v.videoWidth, H = v.videoHeight, cw = cm.clientWidth, ch = cm.clientHeight, sc = Math.max(cw / W, ch / H);
+  var vx = (W - cw / sc) / 2, vy = (H - ch / sc) / 2, vw = cw / sc, vh = ch / sc;      /* partie réellement visible de la vidéo (object-fit: cover) */
+  var sx = vx + vw * 0.06, sw = vw * 0.88, sy = vy + vh * 0.42, sh = vh * 0.16;
+  var c = document.createElement('canvas'); c.width = Math.round(sw); c.height = Math.round(sh);
+  c.getContext('2d').drawImage(v, sx, sy, sw, sh, 0, 0, c.width, c.height);
+  ABOcr.lire(c).then(function (r) {
+    if (r.lot) { SC.saisi.lot = r.lot; var e = $('#f_lot'); if (e) e.value = r.lot; vib(40); camMsg('Lot lu : ' + r.lot + ' — vérifiez-le avant d’envoyer'); }
+    else camMsg('Aucun numéro lu : rapprochez-vous, évitez les reflets, ou saisissez le lot à la main.');
+  }).catch(function () { camMsg('Lecture impossible (réseau ?) : saisissez le lot à la main.'); })
+    .then(function () { lotM = false; var cm2 = $('.cam'); if (cm2) cm2.classList.remove('lotmode'); var b2 = $('#bLot'); if (b2) { b2.disabled = false; b2.textContent = '🔢 Lire le n° de lot'; } });
 }
 function saisi(k, v) { SC.saisi[k] = v; if (k === 'ref') majRef(); btn1(); }
 function majRef() {
