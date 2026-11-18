@@ -329,7 +329,7 @@ function etape2(id, b) {
   dessin2();
 }
 function dessin2(m) {
-  var b = SC.box, nok = parseInt(SC.nok, 10), motifs = CFG.motifs || [];
+  var b = SC.box, nok = parseInt(SC.nok, 10), motifs = (MIS && MIS.motifs && MIS.motifs.length ? MIS.motifs : CFG.motifs) || [];
   var h = '<div class="steps"><i class="fait"></i><i class="on"></i><i></i></div><div class="steplab"><b>Étape 2 sur 3</b> · quantité NOK</div>' + erreur(m) +
     '<div class="card"><table><tr><td>Référence</td><td><b>' + esc(b.ref) + '</b></td></tr><tr><td>Quantité de la boîte</td><td><b>' + b.qt + '</b></td></tr><tr><td>Lot</td><td>' + esc(b.lot || '—') + '</td></tr></table></div>' +
     '<div class="card"><label style="margin-top:0">Quantité NOK</label><div class="big" id="nokv">' + (SC.nok === '' ? '—' : SC.nok) + '</div><div class="pad">' +
