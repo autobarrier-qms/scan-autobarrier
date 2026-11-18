@@ -244,7 +244,13 @@ function envoi1() {
     champs: { dlot: v.dlot, po: v.po, fournisseur: v.fournisseur, saisieRef: SC.saisi.ref != null, saisieQt: SC.saisi.qt != null, saisieLot: SC.saisi.lot != null } }).then(function (r) {
     busy(false);
     if (r.ok) { vib(80); bip(); SC.box = r.box = r.boite; if (r.attente) return enAttente(r.boite); return MIS.nokOp ? etape2(r.boite.id, r.boite) : etape3(r.boite); }
-    if (r.code === 'DOUBLON') { return vue('<h2>Déjà scannée</h2><div class="warn">' + esc(r.err) + '</div><div class="card"><table><tr><td>Référence</td><td>' + esc(r.boite.ref) + '</td></tr><tr><td>Quantité</td><td>' + r.boite.qt + '</td></tr></table></div><button class="btn" onclick="accueil()">Retour à mes boîtes</button>', 'Doublon'); }
+    if (r.code === 'DOUBLON') {
+      var B = r.boite, E = { OUVERTE: 'ouverte', NOK_DECLARE: 'NOK déclaré', CLOTUREE: 'clôturée', TRAITE: 'validée', EN_ATTENTE: 'en attente' }[B.statut] || B.statut;
+      window.__O = [B];
+      var act = B.modifiable ? '<button class="btn" onclick="etape2(\'' + B.id + '\')">' + (B.statut === 'NOK_DECLARE' ? 'Modifier le NOK' : 'Déclarer le NOK') + ' de cette boîte</button>' :
+        '<div class="warn">' + (B.mienne ? 'Cette boîte est déjà ' + E + ' : le NOK ne peut plus être modifié ici. Demandez au responsable qualité.' : 'Cette boîte a été scannée par un autre opérateur.') + '</div>';
+      return vue('<h2>Boîte déjà scannée</h2><div class="card"><table><tr><td>Référence</td><td><b>' + esc(B.ref) + '</b></td></tr><tr><td>Quantité</td><td>' + B.qt + '</td></tr><tr><td>Lot</td><td>' + esc(B.lot || '—') + '</td></tr><tr><td>État</td><td>' + E + (B.nok != null ? ' · NOK ' + B.nok : '') + '</td></tr></table></div>' + act + '<button class="btn sec" onclick="accueil()">Retour à mes boîtes</button>', 'Doublon');
+    }
     etape1(r.err);
   });
 }
