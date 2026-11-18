@@ -52,6 +52,8 @@
       r.format = 'onetech'; r.dlot = dateISO8(c['1T']); r.serial = c['#num'] || ''; r.manque = ['lot'];
     } else if (c['1T'] || c._fmt === 'iso15434') {   /* SEAT / VW : 1T = n° de série ; pas de date lisible */
       r.format = 'seat'; r.serial = c['1T'] || c['#num'] || ''; r.lot = r.serial; r.manque = ['dlot'];
+    } else if (c.S && !c['#num']) {            /* STANDARD PROFIL : « Label No (S) » imprimé en grand = le lot retenu par l'équipe ; la quantité et la date (P aammjj) ne sont pas en code-barres */
+      r.format = 'standard'; r.serial = String(c.S).trim(); r.lot = r.serial; r.manque = ['dlot'];
     } else { r.serial = c['#num'] || ''; r.manque = ['lot']; }
     return r;
   }

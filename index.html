@@ -207,7 +207,7 @@ function etape1(m) {
   var d = ABParse.deduire(SC.champs), S = SC.saisi;
   var ref = S.ref != null ? S.ref : d.ref, qt = S.qt != null ? S.qt : (d.qt || ''), lot = S.lot != null ? S.lot : d.lot, dl = S.dlot != null ? S.dlot : d.dlot;
   var connue = ref && (MIS.refs || []).some(function (r) { return ABParse.cleRef(r[0]) === ABParse.cleRef(ref); });
-  var fmtLib = { knauf: 'Étiquette KNAUF', onetech: 'Étiquette OneTech', seat: 'Étiquette SEAT / VW', autre: 'Étiquette' }[d.format];
+  var fmtLib = { knauf: 'Étiquette KNAUF', onetech: 'Étiquette OneTech', seat: 'Étiquette SEAT / VW', standard: 'Étiquette STANDARD PROFIL', autre: 'Étiquette' }[d.format];
   var lotLib = d.format === 'onetech' ? 'N° de boîte (imprimé « Box n »)' : 'N° de lot';
   var chips = Object.keys(SC.champs).filter(function (k) { return k.charAt(0) !== '_'; }).map(function (k) { return '<span class="chip">' + esc(k.charAt(0) === '#' ? 'N°' : k) + ' ✓</span>'; }).join('');
   var h = '<div class="steps"><i class="on"></i><i></i><i></i></div><div class="steplab"><b>Étape 1 sur 3</b> · scanner l’étiquette</div>' + erreur(m) +
@@ -340,7 +340,7 @@ function rafraichir1() {
   var d = ABParse.deduire(SC.champs);
   [['f_ref', d.ref], ['f_qt', d.qt || ''], ['f_lot', d.lot], ['f_dlot', d.dlot]].forEach(function (x) { var e = $('#' + x[0]); if (e && x[1] !== '' && document.activeElement !== e) e.value = x[1]; });
   $('#chips').innerHTML = Object.keys(SC.champs).filter(function (k) { return k.charAt(0) !== '_'; }).map(function (k) { return '<span class="chip">' + esc(k.charAt(0) === '#' ? 'N°' : k) + ' ✓</span>'; }).join('');
-  $('#fmt').textContent = { knauf: 'Étiquette KNAUF', onetech: 'Étiquette OneTech', seat: 'Étiquette SEAT / VW', autre: 'Étiquette' }[d.format];
+  $('#fmt').textContent = { knauf: 'Étiquette KNAUF', onetech: 'Étiquette OneTech', seat: 'Étiquette SEAT / VW', standard: 'Étiquette STANDARD PROFIL', autre: 'Étiquette' }[d.format];
   majRef(); btn1();
 }
 
