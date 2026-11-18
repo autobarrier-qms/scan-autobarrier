@@ -178,7 +178,8 @@ function accueil(m, info) {
         h += '<button class="btn ' + (Object.keys(pal).length ? 'sec' : 'ok') + '" onclick="cloreToutes()">Clôturer mes ' + prets.length + ' boîte(s) prêtes</button></div>';
       }
     }
-    if (r.clotures.length) { h += '<h2 style="margin-top:20px">Dernières clôturées</h2>'; r.clotures.filter(function (b) { return b.mission === MIS.code; }).reverse().forEach(function (b) { h += '<div class="bx"><div class="t"><span>' + esc(b.ref) + '</span><span class="tag g">clôturée</span></div><div class="mini">Qté ' + b.qt + ' · NOK ' + (b.nok == null ? '—' : b.nok) + ' · lot ' + esc(b.lot || '—') + '</div></div>'; }); }
+    var CL = (r.clotures || []).filter(function (b) { return b.mission === MIS.code; }).reverse();
+    if (CL.length) { var TQ = 0; CL.forEach(function (b) { TQ += +b.qt || 0; }); h += '<h2 style="margin-top:20px">Mes envois (' + CL.length + ' · ' + TQ + ' pièces)</h2><p class="sub">Les boîtes que vous avez clôturées, de la plus récente à la plus ancienne.</p>'; CL.forEach(function (b) { var L = { CLOTUREE: ['envoyée', 'g'], TRAITE: ['validée', 'g'], ECARTEE: ['écartée', 'o'], EN_ATTENTE: ['en attente', 'o'] }[b.statut] || [b.statut, 'g']; h += '<div class="bx"><div class="t"><span>' + esc(b.ref) + '</span><span class="tag ' + L[1] + '">' + L[0] + '</span></div><div class="mini">Qté ' + b.qt + ' · NOK ' + (b.nok == null ? '—' : b.nok) + ' · lot ' + esc(b.lot || '—') + (b.tClot ? ' · ' + esc(String(b.tClot).slice(11, 16)) : '') + '</div></div>'; }); }
     vue(h, 'Mes boîtes', { t: 'Missions', f: function () { choixMission(); } });
   });
 }
