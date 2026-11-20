@@ -51,12 +51,28 @@ table{width:100%;border-collapse:collapse;font-size:14px}td{padding:5px 0;border
 .mini{font-size:12px;color:var(--mu)}
 .hid{display:none!important}
 .ov{position:fixed;inset:0;background:#16253DCC;display:flex;align-items:center;justify-content:center;z-index:20;color:#fff;font-weight:700}
+
+header .net{background:#ffffff1f;border:0;border-radius:20px;padding:6px 11px;font-size:13px;font-weight:700;color:#fff;white-space:nowrap}
+header .net.hl{background:#B25E09}header .net.ok{background:#1B7F4B}
+.toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);background:#16253DEE;color:#fff;padding:11px 16px;border-radius:12px;font-size:14px;z-index:40;max-width:90%;text-align:center}
+.sh{position:fixed;inset:0;z-index:30;background:#16253D88;display:flex;align-items:flex-end;justify-content:center}
+.shc{background:#fff;width:100%;max-width:560px;border-radius:18px 18px 0 0;padding:18px 16px 26px;max-height:88vh;overflow:auto}
+.shc h3{margin:0 0 6px;font-size:18px}
+.sw{display:flex;align-items:center;gap:12px;background:#F3F5F9;border:1.5px solid var(--li);border-radius:14px;padding:12px;margin:10px 0}
+.sw b{display:block}.sw .mini{margin-top:2px}.sw>div{flex:1}
+.tg{position:relative;width:54px;height:32px;border-radius:16px;background:#B8C2D3;border:0;flex:none;transition:.15s}
+.tg::after{content:"";position:absolute;top:3px;left:3px;width:26px;height:26px;border-radius:13px;background:#fff;transition:.15s}
+.tg.on{background:#B25E09}.tg.on::after{left:25px}
+.card.env{border-color:#F0CF98;background:#FFFAF0}
+.tag.l{background:#FFF4E0;color:#6B3F05}
 </style>
 </head>
 <body>
-<header><div><b>AUTOBARRIER</b><small id="hSub">Scan des boîtes</small></div><span class="sp"></span><button id="hBtn" class="hid"></button></header>
+<header><div><b>AUTOBARRIER</b><small id="hSub">Scan des boîtes</small></div><span class="sp"></span><button id="net" class="net" onclick="ouvrirNet()">…</button><button id="hBtn" class="hid"></button></header>
 <main id="app"></main>
 <div id="ov" class="ov hid">Envoi en cours…</div>
+<div id="sh" class="sh hid" onclick="if(event.target===this)fermerSheet()"><div class="shc" id="shc"></div></div>
+<div id="toast" class="toast hid"></div>
 <script src="parser.js"></script>
 <script src="zxing-reader.js"></script>
 <script src="ocr_lot.js"></script>
@@ -89,16 +105,28 @@ var cam = null;
   try { OP = JSON.parse(SS.getItem('ab_op') || 'null'); } catch (e) {}
 })();
 
+/* ---------- état hors ligne ---------- */
+var HL = LS.getItem('ab_hl') === '1';      /* mode hors ligne choisi par l'opérateur */
+var RESO = true;                            /* dernier état connu du réseau */
+var ENVOI = null;                           /* envoi en cours (promesse) */
+var OUT = [];                               /* boîtes gardées sur le téléphone, en attente d'envoi */
+try { OUT = JSON.parse(LS.getItem('ab_out') || '[]') || []; } catch (e) { OUT = []; }
+function sauveOut() { try { LS.setItem('ab_out', JSON.stringify(OUT)); } catch (e) { toast('Mémoire du téléphone pleine : envoyez vos boîtes.'); } majNet(); }
+function enLigne() { return !HL && RESO && navigator.onLine !== false; }
+function prete(r) { return !!(r.annuler || r.clore || r.attente || (r.sid && r.nok)); }
+function nAEnv() { return OUT.filter(function (r) { return prete(r) && !r.err; }).length; }
+
 /* ---------- appel au serveur : une requête texte brut, sans préparation (pas de blocage navigateur) ---------- */
 function api(act, d) {
+  if (HL && act !== 'sync') return Promise.resolve({ ok: false, code: 'RESEAU', err: 'Mode hors ligne.' });
   var ctl = new AbortController(), to = setTimeout(function () { ctl.abort(); }, 30000);
   var body = Object.assign({ k: CF.k, a: CF.a, act: act }, OP ? { mat: OP.mat, nom: OP.nom } : {}, d || {});
   return fetch(CF.url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(body), signal: ctl.signal, redirect: 'follow' })
     .then(function (r) { return r.json(); })
-    .then(function (j) { clearTimeout(to); return j; })
-    .catch(function (e) { clearTimeout(to); return { ok: false, code: 'RESEAU', err: 'Réseau indisponible ou serveur trop lent. Rien n’a été enregistré : réessayez.' }; });
+    .then(function (j) { clearTimeout(to); if (!RESO) { RESO = true; majNet(); } return j; })
+    .catch(function (e) { clearTimeout(to); if (RESO) { RESO = false; majNet(); } return { ok: false, code: 'RESEAU', err: 'Réseau indisponible ou serveur trop lent. Rien n’a été enregistré : réessayez.' }; });
 }
-function busy(on) { $('#ov').classList.toggle('hid', !on); }
+function busy(on, t) { $('#ov').textContent = t || 'Envoi en cours…'; $('#ov').classList.toggle('hid', !on); }
 function vib(n) { try { navigator.vibrate && navigator.vibrate(n || 60); } catch (e) {} }
 function bip() { try { var a = new (window.AudioContext || window.webkitAudioContext)(), o = a.createOscillator(); o.frequency.value = 1100; o.connect(a.destination); o.start(); setTimeout(function () { o.stop(); a.close(); }, 90); } catch (e) {} }
 
@@ -118,10 +146,17 @@ function demarrer() {
     vue('<h2>Téléphone non installé</h2><p class="sub">Ouvrez le <b>lien d’installation</b> envoyé par le responsable qualité (une seule fois). Il enregistre l’adresse du serveur et le nom de ce téléphone.</p>', 'Installation');
     return;
   }
+  var cache = null; try { cache = JSON.parse(LS.getItem('ab_cfg') || 'null'); } catch (e) {}
+  var suite = function (c, hors) { CFG = c.cfg; CFG.__maj = c.t; OP ? choixMission() : identification(); majNet(); };
+  if (HL || navigator.onLine === false) {
+    if (cache) return suite(cache, true);
+    return vue('<h2>Première connexion requise</h2><p class="sub">Le téléphone doit se connecter une première fois pour charger les missions, les références et les défauts. Activez le réseau puis réessayez.</p><button class="btn" onclick="HL=false;LS.setItem(\'ab_hl\',\'0\');demarrer()">Réessayer</button>', 'Connexion');
+  }
   vue('<p class="sub">Connexion au serveur…</p>', 'Connexion');
   api('config').then(function (r) {
-    if (!r.ok) { vue('<h2>Connexion impossible</h2>' + erreur(r.err) + '<button class="btn" onclick="demarrer()">Réessayer</button>', 'Connexion'); return; }
-    CFG = r.cfg; OP ? choixMission() : identification();
+    if (r.ok) { var c = { cfg: r.cfg, t: new Date().toISOString() }; try { LS.setItem('ab_cfg', JSON.stringify(c)); } catch (e) {} return suite(c); }
+    if (r.code === 'RESEAU' && cache) { toast('Pas de réseau : missions chargées depuis le téléphone'); return suite(cache, true); }
+    vue('<h2>Connexion impossible</h2>' + erreur(r.err) + '<button class="btn" onclick="demarrer()">Réessayer</button>', 'Connexion');
   });
 }
 
@@ -156,46 +191,116 @@ function actualiser() { SC = null; demarrer(); }
 function missionOK(i) { MIS = CFG.missions[i]; accueil(); }
 
 /* ---------- 3 · accueil : mes boîtes ---------- */
+function mN(x) { var t = String(x == null ? '' : x).trim(); return /^\d+$/.test(t) ? String(parseInt(t, 10)) : t; }
+function isoLocal(d) { function p(n) { return (n < 10 ? '0' : '') + n; } return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + 'T' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds()); }
+function boxDe(r) {
+  var o = r.ouv || r.aff || {};
+  return { id: r.cid, local: true, sid: r.sid || '', mission: r.mission, ref: o.ref, qt: o.qt, lot: o.lot, serial: o.serial, palette: o.palette || '',
+    statut: r.attente ? 'EN_ATTENTE' : r.clore ? 'CLOTUREE' : r.nok ? 'NOK_DECLARE' : 'OUVERTE', nok: r.nok ? r.nok.nok : null, motifs: r.nok ? r.nok.motifs : [], tScan: isoLocal(new Date(r.tPhone)) };
+}
+function recDe(id) { return OUT.filter(function (r) { return r.cid === id || r.sid === id; })[0] || null; }
+function majRec(b, f) {
+  var r = recDe(b.id);
+  if (!r) { r = { cid: 's' + b.id, sid: b.id, mat: OP.mat, nom: OP.nom, mission: b.mission || MIS.code, tPhone: new Date().toISOString(), aff: { ref: b.ref, qt: b.qt, lot: b.lot, palette: b.palette } }; OUT.push(r); }
+  f(r); sauveOut(); return r;
+}
+function pret(b) { return b.statut === 'NOK_DECLARE' || (b.statut === 'OUVERTE' && !MIS.nokOp); }
+
 function accueil(m, info) {
-  busy(true);
-  api('liste').then(function (r) {
-    busy(false);
-    if (!r.ok) return vue('<h2>Mes boîtes</h2>' + erreur(r.err) + '<button class="btn" onclick="accueil()">Réessayer</button>', 'Mes boîtes', { t: 'Missions', f: function () { choixMission(); } });
-    var O = r.ouvertes.filter(function (b) { return b.mission === MIS.code; }), prets = O.filter(function (b) { return b.statut === 'NOK_DECLARE' || (b.statut === 'OUVERTE' && !MIS.nokOp); });
-    var pal = {}; prets.forEach(function (b) { if (b.palette) pal[b.palette] = (pal[b.palette] || 0) + 1; });
-    var h = '<h2>' + esc(MIS.client) + '</h2><p class="sub">' + esc(MIS.code) + ' · ' + esc(OP.nom) + '</p>' + (info ? '<div class="okb">' + esc(info) + '</div>' : '') + erreur(m) +
-      '<button class="btn" onclick="nouvelle()">📷  Scanner une boîte</button>';
-    if (O.length) {
-      h += '<h2 style="margin-top:20px">Mes boîtes ouvertes (' + O.length + ')</h2><p class="sub">Vous pouvez laisser plusieurs boîtes ouvertes (par exemple pour une palette) : elles ne sont comptées qu’une fois clôturées.</p>';
-      O.forEach(function (b) {
-        var etat = b.statut === 'NOK_DECLARE' ? '<span class="tag v">NOK déclaré : ' + b.nok + '</span>' : '<span class="tag o">NOK à déclarer</span>';
-        h += '<div class="bx"><div class="t"><span>' + esc(b.ref) + '</span>' + etat + '</div><div class="mini">Qté ' + b.qt + ' · lot ' + esc(b.lot || '—') + (b.palette ? ' · palette ' + esc(b.palette) : '') + ' · ' + esc(b.tScan.slice(11, 16)) + '</div>' +
-          '<div class="row">' + (b.statut === 'OUVERTE' ? '<button class="btn" style="padding:10px;font-size:15px" onclick="etape2(\'' + b.id + '\')">Déclarer le NOK</button>' : '<button class="btn sec" style="padding:10px;font-size:15px" onclick="etape2(\'' + b.id + '\')">Modifier le NOK</button>') +
-          '<button class="btn ko" style="padding:10px;font-size:15px" onclick="annuler(\'' + b.id + '\')">Annuler</button></div></div>';
-      });
-      window.__O = O;
-      if (prets.length) {
-        h += '<div class="card"><b>Clôturer</b><p class="mini">Les boîtes dont le NOK est déclaré peuvent être clôturées ensemble.</p>';
-        Object.keys(pal).forEach(function (p) { h += '<button class="btn ok" onclick="clorePalette(\'' + esc(p) + '\')">Clôturer la palette ' + esc(p) + ' (' + pal[p] + ' boîtes)</button>'; });
-        h += '<button class="btn ' + (Object.keys(pal).length ? 'sec' : 'ok') + '" onclick="cloreToutes()">Clôturer mes ' + prets.length + ' boîte(s) prêtes</button></div>';
-      }
-    }
-    var CL = (r.clotures || []).filter(function (b) { return b.mission === MIS.code; }).reverse();
-    if (CL.length) { var TQ = 0; CL.forEach(function (b) { TQ += +b.qt || 0; }); h += '<h2 style="margin-top:20px">Mes envois (' + CL.length + ' · ' + TQ + ' pièces)</h2><p class="sub">Les boîtes que vous avez clôturées, de la plus récente à la plus ancienne.</p>'; CL.forEach(function (b) { var L = { CLOTUREE: ['envoyée', 'g'], TRAITE: ['validée', 'g'], ECARTEE: ['écartée', 'o'], EN_ATTENTE: ['en attente', 'o'] }[b.statut] || [b.statut, 'g']; h += '<div class="bx"><div class="t"><span>' + esc(b.ref) + '</span><span class="tag ' + L[1] + '">' + L[0] + '</span></div><div class="mini">Qté ' + b.qt + ' · NOK ' + (b.nok == null ? '—' : b.nok) + ' · lot ' + esc(b.lot || '—') + (b.tClot ? ' · ' + esc(String(b.tClot).slice(11, 16)) : '') + '</div></div>'; }); }
-    vue(h, 'Mes boîtes', { t: 'Missions', f: function () { choixMission(); } });
+  var cache = null; try { cache = JSON.parse(LS.getItem('ab_liste') || 'null'); } catch (e) {}
+  var vide = { ouvertes: [], clotures: [], t: '' };
+  if (!enLigne()) return dessinAccueil(cache && cache.mat === mN(OP.mat) ? cache : vide, m, info);
+  busy(true, nAEnv() ? 'Envoi des boîtes gardées sur le téléphone…' : 'Chargement…');
+  (nAEnv() ? envoyerTout(true) : Promise.resolve(null)).then(function (res) {
+    var info2 = info || (res && res.n ? '✓ ' + res.n + ' boîte(s) envoyée(s) au serveur.' : '');
+    return api('liste').then(function (r) {
+      busy(false);
+      if (r.ok) { r.t = new Date().toISOString(); r.mat = mN(OP.mat); try { LS.setItem('ab_liste', JSON.stringify(r)); } catch (e) {} return dessinAccueil(r, m, info2); }
+      if (r.code === 'RESEAU') return dessinAccueil(cache && cache.mat === mN(OP.mat) ? cache : vide, m, info2);
+      vue('<h2>Mes boîtes</h2>' + erreur(r.err) + '<button class="btn" onclick="accueil()">Réessayer</button>', 'Mes boîtes', { t: 'Missions', f: function () { choixMission(); } });
+    });
   });
 }
-function annuler(id) {
-  if (!confirm('Annuler cette boîte ? Elle ne sera pas comptée.')) return;
-  busy(true); api('annuler', { id: id }).then(function (r) { busy(false); accueil(r.ok ? '' : r.err, r.ok ? 'Boîte annulée.' : ''); });
+function ligneMini(b) { return esc(b.ref) + ' · qté ' + b.qt + (b.nok != null ? ' · NOK ' + b.nok : '') + (b.statut === 'EN_ATTENTE' ? ' · en attente du RQ' : ''); }
+function dessinAccueil(r, m, info) {
+  var loc = OUT.filter(function (x) { return x.mission === MIS.code && mN(x.mat) === mN(OP.mat) && !x.annuler; });
+  var cache = {}; loc.forEach(function (x) { if (x.sid) cache[x.sid] = 1; }); OUT.forEach(function (x) { if (x.annuler && x.sid) cache[x.sid] = 1; });
+  var O = (r.ouvertes || []).filter(function (b) { return b.mission === MIS.code && !cache[b.id]; }).concat(loc.filter(function (x) { return !x.clore && !x.attente; }).map(boxDe));
+  var AE = loc.filter(function (x) { return x.clore || x.attente; });
+  var prets = O.filter(pret), pal = {}; prets.forEach(function (b) { if (b.palette) pal[b.palette] = (pal[b.palette] || 0) + 1; });
+  window.__O = O;
+  var h = '<h2>' + esc(MIS.client) + '</h2><p class="sub">' + esc(MIS.code) + ' · ' + esc(OP.nom) + '</p>' + (info ? '<div class="okb">' + esc(info) + '</div>' : '') + erreur(m);
+  if (!enLigne()) h += '<div class="warn">📴 <b>Hors ligne.</b> Vos boîtes sont gardées sur le téléphone et seront envoyées dès que vous serez en ligne.</div>';
+  h += '<button class="btn" onclick="nouvelle()">📷  Scanner une boîte</button>';
+  var att = AE.filter(function (x) { return !x.err; }), errs = AE.filter(function (x) { return x.err; });
+  if (att.length) {
+    h += '<div class="card env" style="margin-top:14px"><b>📤 À envoyer (' + att.length + ')</b><div class="mini" style="margin-bottom:6px">Boîtes terminées, gardées sur ce téléphone.</div>' +
+      att.map(function (x) { return '<div class="mini" style="color:var(--tx);padding:3px 0">• ' + ligneMini(boxDe(x)) + '</div>'; }).join('') +
+      '<button class="btn" onclick="envoyerClic()">' + (enLigne() ? 'Envoyer maintenant' : 'Envoyer (réseau nécessaire)') + '</button></div>';
+  }
+  errs.forEach(function (x) {
+    h += '<div class="err"><b>' + ligneMini(boxDe(x)) + '</b><br>' + esc(x.err) + '<div class="row" style="margin-top:8px"><button class="btn sec" style="padding:10px;font-size:15px;margin:0" onclick="reessayer(\'' + x.cid + '\')">Réessayer</button>' +
+      '<button class="btn ko" style="padding:10px;font-size:15px;margin:0" onclick="supprRec(\'' + x.cid + '\')">Supprimer</button></div></div>';
+  });
+  if (O.length) {
+    h += '<h2 style="margin-top:20px">Mes boîtes ouvertes (' + O.length + ')</h2><p class="sub">Vous pouvez laisser plusieurs boîtes ouvertes (par exemple pour une palette) : elles ne sont comptées qu’une fois clôturées.</p>';
+    O.forEach(function (b) {
+      var etat = b.statut === 'NOK_DECLARE' ? '<span class="tag v">NOK déclaré : ' + b.nok + '</span>' : '<span class="tag o">NOK à déclarer</span>';
+      h += '<div class="bx"><div class="t"><span>' + esc(b.ref) + '</span>' + etat + '</div><div class="mini">' + (b.local ? '<span class="tag l">📱 sur le téléphone</span> ' : '') + 'Qté ' + b.qt + ' · lot ' + esc(b.lot || '—') + (b.palette ? ' · palette ' + esc(b.palette) : '') + ' · ' + esc(String(b.tScan || '').slice(11, 16)) + '</div>' +
+        '<div class="row">' + (b.statut === 'OUVERTE' ? '<button class="btn" style="padding:10px;font-size:15px" onclick="etape2(\'' + b.id + '\')">Déclarer le NOK</button>' : '<button class="btn sec" style="padding:10px;font-size:15px" onclick="etape2(\'' + b.id + '\')">Modifier le NOK</button>') +
+        '<button class="btn ko" style="padding:10px;font-size:15px" onclick="annuler(\'' + b.id + '\')">Annuler</button></div></div>';
+    });
+    if (prets.length) {
+      h += '<div class="card"><b>Clôturer</b><p class="mini">Les boîtes dont le NOK est déclaré peuvent être clôturées ensemble.</p>';
+      Object.keys(pal).forEach(function (p) { h += '<button class="btn ok" onclick="clorePalette(\'' + esc(p) + '\')">Clôturer la palette ' + esc(p) + ' (' + pal[p] + ' boîtes)</button>'; });
+      h += '<button class="btn ' + (Object.keys(pal).length ? 'sec' : 'ok') + '" onclick="cloreToutes()">Clôturer mes ' + prets.length + ' boîte(s) prêtes</button></div>';
+    }
+  }
+  var CL = (r.clotures || []).filter(function (b) { return b.mission === MIS.code; }).reverse();
+  if (CL.length) {
+    var TQ = 0; CL.forEach(function (b) { TQ += +b.qt || 0; });
+    h += '<h2 style="margin-top:20px">Mes envois (' + CL.length + ' · ' + TQ + ' pièces)</h2><p class="sub">Les boîtes que vous avez clôturées, de la plus récente à la plus ancienne.' + (!enLigne() && r.t ? ' <i>Liste du ' + esc(new Date(r.t).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })) + '.</i>' : '') + '</p>';
+    CL.forEach(function (b) {
+      var L = { CLOTUREE: ['envoyée', 'g'], TRAITE: ['validée', 'g'], ECARTEE: ['écartée', 'o'], EN_ATTENTE: ['en attente', 'o'] }[b.statut] || [b.statut, 'g'];
+      h += '<div class="bx"><div class="t"><span>' + esc(b.ref) + '</span><span class="tag ' + L[1] + '">' + L[0] + '</span></div><div class="mini">Qté ' + b.qt + ' · NOK ' + (b.nok == null ? '—' : b.nok) + ' · lot ' + esc(b.lot || '—') + (b.tClot ? ' · ' + esc(String(b.tClot).slice(11, 16)) : '') + '</div></div>';
+    });
+  }
+  vue(h, 'Mes boîtes', { t: 'Missions', f: function () { choixMission(); } });
 }
-function cloreToutes() { var ids = (window.__O || []).filter(function (b) { return b.statut === 'NOK_DECLARE' || (b.statut === 'OUVERTE' && !MIS.nokOp); }).map(function (b) { return b.id; }); cloturer({ ids: ids }); }
+function annuler(id) {
+  var b = (window.__O || []).filter(function (x) { return x.id === id; })[0];
+  demander('Annuler cette boîte ? Elle ne sera pas comptée.', 'Oui, annuler', function () {
+    if (b && b.local && !b.sid) { OUT = OUT.filter(function (r) { return r.cid !== id; }); sauveOut(); return accueil('', 'Boîte annulée.'); }
+    if (b && (b.local || !enLigne())) { majRec(b, function (r) { r.annuler = true; r.clore = false; r.err = ''; }); return accueil('', 'Annulation gardée sur le téléphone : elle sera envoyée.'); }
+    busy(true); api('annuler', { id: id }).then(function (r) {
+      busy(false);
+      if (r.code === 'RESEAU' && b) { majRec(b, function (x) { x.annuler = true; x.clore = false; }); return accueil('', 'Réseau perdu : annulation gardée sur le téléphone.'); }
+      accueil(r.ok ? '' : r.err, r.ok ? 'Boîte annulée.' : '');
+    });
+  });
+}
+function cloreToutes() { cloturer({ ids: (window.__O || []).filter(pret).map(function (b) { return b.id; }) }); }
 function clorePalette(p) { cloturer({ palette: p }); }
-function cloturer(q, apres) {
+function cloturer(q) {
+  var cache = null; try { cache = JSON.parse(LS.getItem('ab_liste') || 'null'); } catch (e) {}
+  var vus = {}, cand = [];
+  function ajoute(b) { if (b && !vus[b.id]) { vus[b.id] = 1; cand.push(b); } }
+  (window.__O || []).forEach(ajoute); if (SC && SC.box) ajoute(SC.box);
+  OUT.filter(function (x) { return x.mission === MIS.code && mN(x.mat) === mN(OP.mat) && !x.annuler && !x.clore && !x.attente; }).forEach(function (x) { var b = boxDe(x); if (!vus[x.sid]) ajoute(b); });
+  if (!enLigne() && cache && cache.mat === mN(OP.mat)) (cache.ouvertes || []).filter(function (b) { return b.mission === MIS.code; }).forEach(function (b) { if (!recDe(b.id)) ajoute(b); });
+  var cibles = q.palette ? cand.filter(function (b) { return b.palette === q.palette && pret(b); }) : (q.ids || []).map(function (id) { return cand.filter(function (b) { return b.id === id; })[0]; }).filter(Boolean);
+  if (!cibles.length) return accueil('Aucune boîte à clôturer.');
+  var loc = cibles.filter(function (b) { return b.local || !enLigne(); }), srv = cibles.filter(function (b) { return loc.indexOf(b) < 0; });
+  function localise(L) { L.forEach(function (b) { majRec(b, function (r) { r.clore = true; r.err = ''; r.bloque = false; }); }); }
+  localise(loc); SC = null;
+  var msgLoc = function (n) { return enLigne() ? n + ' boîte(s) clôturée(s).' : n + ' boîte(s) clôturée(s) et gardée(s) sur le téléphone : à envoyer dès que vous serez en ligne.'; };
+  if (!srv.length && !(q.palette && enLigne())) { vib([60, 60, 60]); return accueil('', msgLoc(loc.length)); }
   busy(true);
-  api('cloturer', q).then(function (r) {
+  api('cloturer', q.palette ? { palette: q.palette } : { ids: srv.map(function (b) { return b.id; }) }).then(function (r) {
     busy(false);
-    if (r.ok) { vib([60, 60, 60]); return accueil('', r.n + ' boîte(s) clôturée(s).'); }
+    if (r.ok) { vib([60, 60, 60]); return accueil('', (r.n + loc.length) + ' boîte(s) clôturée(s).'); }
+    if (loc.length && /Aucune boîte à clôturer/.test(r.err || '')) { vib([60, 60, 60]); return accueil('', msgLoc(loc.length)); }
+    if (r.code === 'RESEAU') { localise(srv); return accueil('', 'Réseau perdu : ' + cibles.length + ' boîte(s) clôturée(s) et gardée(s) sur le téléphone, à envoyer.'); }
     accueil(r.err + (r.boites ? ' (' + r.boites.length + ')' : ''));
   });
 }
@@ -256,29 +361,50 @@ function valeurs1() {
   return { ref: (S.ref != null ? S.ref : d.ref).trim(), qt: parseInt(S.qt != null ? S.qt : d.qt, 10) || 0, lot: (S.lot != null ? S.lot : d.lot).trim(), dlot: S.dlot != null ? S.dlot : d.dlot,
     palette: (S.palette || '').trim(), serial: d.serial, format: d.format, po: d.po, fournisseur: d.fournisseur };
 }
+function ecranDoublon(B) {
+  var E = { OUVERTE: 'ouverte', NOK_DECLARE: 'NOK déclaré', CLOTUREE: 'clôturée', TRAITE: 'validée', EN_ATTENTE: 'en attente' }[B.statut] || B.statut;
+  window.__O = [B];
+  var act = B.modifiable ? '<button class="btn" onclick="etape2(\'' + B.id + '\')">' + (B.statut === 'NOK_DECLARE' ? 'Modifier le NOK' : 'Déclarer le NOK') + ' de cette boîte</button>' :
+    '<div class="warn">' + (B.mienne ? 'Cette boîte est déjà ' + E + ' : le NOK ne peut plus être modifié ici. Demandez au responsable qualité.' : 'Cette boîte a été scannée par un autre opérateur.') + '</div>';
+  vue('<h2>Boîte déjà scannée</h2><div class="card"><table><tr><td>Référence</td><td><b>' + esc(B.ref) + '</b></td></tr><tr><td>Quantité</td><td>' + B.qt + '</td></tr><tr><td>Lot</td><td>' + esc(B.lot || '—') + '</td></tr><tr><td>État</td><td>' + E + (B.nok != null ? ' · NOK ' + B.nok : '') + '</td></tr></table></div>' + act + '<button class="btn sec" onclick="accueil()">Retour à mes boîtes</button>', 'Doublon');
+}
+function nouveauCid() { return 'c' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
 function envoi1() {
   var v = valeurs1();
   if (!v.ref || !(v.qt > 0)) return;
-  if ((v.format === 'onetech') && !v.lot && !confirm('Le n° de boîte est vide. Envoyer quand même ?')) return;
-  if ((v.format === 'knauf') && !v.dlot && !confirm('La date du lot est vide. Envoyer quand même ?')) return;
-  busy(true); stopCam();
-  api('ouvrir', { mission: MIS.code, ref: v.ref, qt: v.qt, lot: v.lot, serial: v.serial, palette: v.palette, format: v.format, tPhone: new Date().toISOString(),
+  var q1 = (v.format === 'onetech' && !v.lot) ? 'Le n° de boîte est vide. Continuer quand même ?' : (v.format === 'knauf' && !v.dlot) ? 'La date du lot est vide. Continuer quand même ?' : '';
+  if (q1) return demander(q1, 'Continuer', function () { envoi1b(v); });
+  envoi1b(v);
+}
+function ouvrirLocal(v, perdu) {
+  var dup = OUT.filter(function (r) { return r.mission === MIS.code && !r.annuler && r.ouv && mN(r.mat) === mN(OP.mat) && (v.serial ? r.ouv.serial === v.serial : (r.ouv.ref === v.ref && r.ouv.lot === v.lot && r.ouv.qt === v.qt && isoLocal(new Date(r.tPhone)).slice(0, 10) === isoLocal(new Date()).slice(0, 10))); })[0];
+  if (dup) { var B = boxDe(dup); B.mienne = true; B.modifiable = !dup.clore; return ecranDoublon(B); }
+  var connue = (MIS.refs || []).some(function (r) { return ABParse.cleRef(r[0]) === ABParse.cleRef(v.ref); });
+  var r = { cid: SC.cid, mat: OP.mat, nom: OP.nom, mission: MIS.code, tPhone: new Date().toISOString(), attente: !connue,
+    ouv: { ref: v.ref, qt: v.qt, lot: v.lot, serial: v.serial, palette: v.palette, format: v.format, brut: Object.keys(SC.champs).filter(function (k) { return k.charAt(0) !== '_'; }).map(function (k) { return k + '=' + SC.champs[k]; }).join(' | '),
+      champs: { dlot: v.dlot, po: v.po, fournisseur: v.fournisseur, saisieRef: SC.saisi.ref != null, saisieQt: SC.saisi.qt != null, saisieLot: SC.saisi.lot != null } } };
+  OUT.push(r); sauveOut(); vib(80); bip();
+  var b = boxDe(r); SC.box = b;
+  if (perdu) toast('Réseau perdu : boîte gardée sur le téléphone');
+  if (!connue) return enAttente(b);
+  return MIS.nokOp ? etape2(b.id, b) : etape3(b);
+}
+function envoi1b(v) {
+  stopCam(); SC.cid = SC.cid || nouveauCid();
+  if (!enLigne()) return ouvrirLocal(v);
+  busy(true);
+  api('ouvrir', { mission: MIS.code, cid: SC.cid, ref: v.ref, qt: v.qt, lot: v.lot, serial: v.serial, palette: v.palette, format: v.format, tPhone: new Date().toISOString(),
     brut: Object.keys(SC.champs).filter(function (k) { return k.charAt(0) !== '_'; }).map(function (k) { return k + '=' + SC.champs[k]; }).join(' | '),
     champs: { dlot: v.dlot, po: v.po, fournisseur: v.fournisseur, saisieRef: SC.saisi.ref != null, saisieQt: SC.saisi.qt != null, saisieLot: SC.saisi.lot != null } }).then(function (r) {
     busy(false);
     if (r.ok) { vib(80); bip(); SC.box = r.box = r.boite; if (r.attente) return enAttente(r.boite); return MIS.nokOp ? etape2(r.boite.id, r.boite) : etape3(r.boite); }
-    if (r.code === 'DOUBLON') {
-      var B = r.boite, E = { OUVERTE: 'ouverte', NOK_DECLARE: 'NOK déclaré', CLOTUREE: 'clôturée', TRAITE: 'validée', EN_ATTENTE: 'en attente' }[B.statut] || B.statut;
-      window.__O = [B];
-      var act = B.modifiable ? '<button class="btn" onclick="etape2(\'' + B.id + '\')">' + (B.statut === 'NOK_DECLARE' ? 'Modifier le NOK' : 'Déclarer le NOK') + ' de cette boîte</button>' :
-        '<div class="warn">' + (B.mienne ? 'Cette boîte est déjà ' + E + ' : le NOK ne peut plus être modifié ici. Demandez au responsable qualité.' : 'Cette boîte a été scannée par un autre opérateur.') + '</div>';
-      return vue('<h2>Boîte déjà scannée</h2><div class="card"><table><tr><td>Référence</td><td><b>' + esc(B.ref) + '</b></td></tr><tr><td>Quantité</td><td>' + B.qt + '</td></tr><tr><td>Lot</td><td>' + esc(B.lot || '—') + '</td></tr><tr><td>État</td><td>' + E + (B.nok != null ? ' · NOK ' + B.nok : '') + '</td></tr></table></div>' + act + '<button class="btn sec" onclick="accueil()">Retour à mes boîtes</button>', 'Doublon');
-    }
+    if (r.code === 'RESEAU') return ouvrirLocal(v, true);
+    if (r.code === 'DOUBLON') return ecranDoublon(r.boite);
     etape1(r.err);
   });
 }
 function enAttente(b) {
-  vue('<h2>Boîte en attente</h2><div class="warn">La référence <b>' + esc(b.ref) + '</b> n’existe pas dans le catalogue de cette mission. La boîte est enregistrée <b>en attente</b> : le responsable qualité décide. Passez à la boîte suivante.</div><button class="btn" onclick="nouvelle()">Scanner la boîte suivante</button><button class="btn sec" onclick="accueil()">Retour</button>', 'En attente');
+  vue('<h2>Boîte en attente</h2><div class="warn">La référence <b>' + esc(b.ref) + '</b> n’existe pas dans le catalogue de cette mission. La boîte est enregistrée <b>en attente</b> : le responsable qualité décide.' + (b.local ? ' Elle sera envoyée dès que vous serez en ligne.' : '') + ' Passez à la boîte suivante.</div><button class="btn" onclick="nouvelle()">Scanner la boîte suivante</button><button class="btn sec" onclick="accueil()">Retour</button>', 'En attente');
 }
 
 /* ---------- caméra ---------- */
@@ -380,13 +506,39 @@ function touche(t) {
   dessin2();
 }
 function aucunNok() { SC.nok = '0'; SC.aucun = true; SC.mot = []; dessin2(); }
+function validerNok(b, nok, mot) {
+  var motifs = (MIS && MIS.motifs && MIS.motifs.length ? MIS.motifs : CFG.motifs) || [];
+  if (isNaN(nok) || nok < 0) return 'Quantité NOK invalide.';
+  if (nok > b.qt) return 'NOK (' + nok + ') supérieur à la quantité de la boîte (' + b.qt + ').';
+  if (nok === 0) return '';
+  if (!mot.length) return 'Choisissez le motif du défaut.';
+  var s = 0, vus = {};
+  for (var i = 0; i < mot.length; i++) {
+    var q = parseInt(mot[i].q, 10);
+    if (!mot[i].m) return 'Choisissez le motif du défaut.';
+    if (!(q > 0)) return 'Quantité du motif « ' + mot[i].m + ' » invalide.';
+    if (motifs.indexOf(mot[i].m) < 0) return 'Motif inconnu : ' + mot[i].m;
+    if (vus[mot[i].m]) return 'Motif en double.'; vus[mot[i].m] = 1; s += q;
+  }
+  return s !== nok ? 'La somme des motifs (' + s + ') doit être égale au NOK (' + nok + ').' : '';
+}
+function nokLocal(b, nok, mot, perdu) {
+  var e = validerNok(b, nok, mot); if (e) return dessin2(e);
+  var M = nok === 0 ? [] : mot.map(function (x) { return { m: x.m, q: parseInt(x.q, 10) }; });
+  var r = majRec(b, function (x) { x.nok = { nok: nok, aucun: nok === 0, motifs: M }; x.err = ''; x.bloque = false; });
+  vib(80); SC = SC || {}; SC.box = boxDe(r); if (perdu) toast('Réseau perdu : NOK gardé sur le téléphone');
+  etape3(SC.box);
+}
 function envoi2() {
   var nok = parseInt(SC.nok, 10); if (isNaN(nok)) return;
   if (nok === 0 && !SC.aucun) return dessin2('Appuyez sur « Aucun NOK » pour confirmer qu’il n’y a aucun défaut.');
+  var mot = SC.mot.map(function (x) { return { m: x.m, q: x.q }; }), b = SC.box;
+  if (b.local || !enLigne()) return nokLocal(b, nok, mot);
   busy(true);
-  api('nok', { id: SC.box.id, nok: nok, aucun: nok === 0, motifs: SC.mot.map(function (x) { return { m: x.m, q: x.q }; }) }).then(function (r) {
+  api('nok', { id: b.id, nok: nok, aucun: nok === 0, motifs: mot }).then(function (r) {
     busy(false);
     if (r.ok) { vib(80); SC.box = r.boite; return etape3(r.boite); }
+    if (r.code === 'RESEAU') return nokLocal(b, nok, mot, true);
     dessin2(r.err);
   });
 }
@@ -397,11 +549,84 @@ function etape3(b) {
   var mot = (b.motifs || []).map(function (m) { return esc(m.m) + ' × ' + m.q; }).join(' ; ');
   vue('<div class="steps"><i class="fait"></i><i class="fait"></i><i class="on"></i></div><div class="steplab"><b>Étape 3 sur 3</b> · clôture</div>' +
     '<div class="card"><table><tr><td>Référence</td><td><b>' + esc(b.ref) + '</b></td></tr><tr><td>Quantité</td><td>' + b.qt + '</td></tr><tr><td>NOK</td><td><b>' + (b.nok == null ? 'non demandé' : b.nok) + '</b>' + (mot ? ' · ' + mot : '') + '</td></tr><tr><td>Lot</td><td>' + esc(b.lot || '—') + '</td></tr>' + (b.palette ? '<tr><td>Palette</td><td>' + esc(b.palette) + '</td></tr>' : '') + '<tr><td>Équipe</td><td>' + esc(b.equipe) + ' · ' + esc(b.date) + '</td></tr></table></div>' +
-    '<div class="inf">Après la clôture, vous ne pouvez plus modifier cette boîte : seul le responsable qualité peut la rouvrir.</div>' +
+    '<div class="inf">Après la clôture, vous ne pouvez plus modifier cette boîte : seul le responsable qualité peut la rouvrir.</div>' + (!enLigne() ? '<div class="warn">📴 Hors ligne : la boîte sera gardée sur le téléphone, puis envoyée dès que vous serez en ligne.</div>' : '') +
     '<button class="btn ok" onclick="cloturer({ids:[SC.box.id]})">Clôturer cette boîte</button>' +
     (b.palette ? '<button class="btn sec" onclick="clorePalette(\'' + esc(b.palette) + '\')">Clôturer toute la palette ' + esc(b.palette) + '</button>' : '') +
     '<button class="btn sec" onclick="nouvelle()">Laisser ouverte et scanner la suivante</button>', 'Étape 3 · clôture', { t: 'Mes boîtes', f: function () { SC = null; accueil(); } });
 }
+
+
+/* ---------- envoi des boîtes gardées sur le téléphone ---------- */
+function payload(r) { return { cid: r.cid, sid: r.sid || '', mat: r.mat, nom: r.nom, mission: r.mission, tPhone: r.tPhone, ouv: r.sid ? null : r.ouv, nok: r.nok || null, clore: !!r.clore, annuler: !!r.annuler }; }
+function envoyerTout(silencieux) {
+  if (ENVOI) return ENVOI;
+  var todo = OUT.filter(function (r) { return prete(r) && !r.err; });
+  if (!todo.length) return Promise.resolve({ n: 0, err: 0 });
+  var n = 0, err = 0, stop = false, lots = [];
+  for (var i = 0; i < todo.length; i += 5) lots.push(todo.slice(i, i + 5));
+  ENVOI = lots.reduce(function (p, lot) {
+    return p.then(function () {
+      if (stop) return;
+      return api('sync', { boites: lot.map(payload) }).then(function (r) {
+        if (!r.ok) { if (r.code === 'RESEAU') { stop = true; return; } lot.forEach(function (x) { x.err = r.err || 'Envoi refusé.'; }); err += lot.length; return; }
+        r.res.forEach(function (x) {
+          var rec = OUT.filter(function (z) { return z.cid === x.cid; })[0]; if (!rec) return;
+          if (x.ok) { OUT = OUT.filter(function (z) { return z.cid !== x.cid; }); n++; }
+          else { rec.err = x.code === 'DOUBLON' ? 'Cette étiquette a déjà été scannée : ' + (x.err || '') : (x.err || 'Envoi refusé.'); rec.code = x.code || ''; err++; }
+        });
+      });
+    });
+  }, Promise.resolve()).then(function () { ENVOI = null; sauveOut(); return { n: n, err: err, coupe: stop }; });
+  return ENVOI;
+}
+function envoyerClic() {
+  if (HL) { HL = false; LS.setItem('ab_hl', '0'); }
+  if (navigator.onLine === false) { majNet(); return toast('Aucun réseau détecté : activez le Wi-Fi ou les données mobiles.'); }
+  RESO = true; majNet(); busy(true, 'Envoi des boîtes…');
+  envoyerTout().then(function (res) {
+    busy(false);
+    if (res.coupe) return accueil('Connexion perdue pendant l’envoi : ' + res.n + ' boîte(s) envoyée(s), le reste est conservé sur le téléphone.');
+    accueil(res.err ? res.err + ' boîte(s) à corriger (voir ci-dessous).' : '', res.n ? '✓ ' + res.n + ' boîte(s) envoyée(s) au serveur.' : '');
+  });
+}
+function reessayer(cid) { var r = recDe(cid); if (r) { r.err = ''; r.bloque = false; sauveOut(); } envoyerClic(); }
+function supprRec(cid) {
+  demander('Supprimer cette boîte ? Elle ne sera jamais envoyée ni comptée.', 'Oui, supprimer', function () { OUT = OUT.filter(function (r) { return r.cid !== cid; }); sauveOut(); accueil('', 'Boîte supprimée.'); });
+}
+window.addEventListener('online', function () { RESO = true; majNet(); if (!HL && nAEnv() && MIS) { toast('Réseau retrouvé : envoi des boîtes…'); envoyerTout().then(function (r) { if (r.n) { toast('✓ ' + r.n + ' boîte(s) envoyée(s)'); if ($('#app') && !SC) accueil('', '✓ ' + r.n + ' boîte(s) envoyée(s) au serveur.'); } }); } });
+window.addEventListener('offline', function () { RESO = false; majNet(); toast('Réseau perdu : les boîtes sont gardées sur le téléphone'); });
+
+/* ---------- pastille de connexion, feuille de réglage, messages ---------- */
+function majNet() {
+  var b = $('#net'); if (!b) return;
+  var n = nAEnv(), on = enLigne();
+  b.className = 'net ' + (on ? 'ok' : 'hl');
+  b.textContent = (on ? '🟢 En ligne' : (HL ? '📴 Hors ligne' : '📴 Pas de réseau')) + (n ? ' · 📤 ' + n : '');
+}
+function sheet(h) { $('#shc').innerHTML = h; $('#sh').classList.remove('hid'); }
+function fermerSheet() { $('#sh').classList.add('hid'); }
+function ouvrirNet() {
+  var n = nAEnv(), tel = navigator.onLine !== false;
+  sheet('<h3>Connexion</h3><div class="mini">' + (enLigne() ? '🟢 En ligne : chaque étape est envoyée tout de suite au serveur.' : HL ? '📴 Mode hors ligne choisi : rien n’est envoyé, tout est gardé sur le téléphone.' : '📴 Aucun réseau détecté : tout est gardé sur le téléphone automatiquement.') + '</div>' +
+    '<div class="sw"><div><b>Travailler hors ligne</b><div class="mini">Gardez vos scans sur le téléphone (par exemple pour économiser vos données), puis envoyez tout d’un coup.</div></div><button class="tg' + (HL ? ' on' : '') + '" onclick="basculerHL()" aria-label="Mode hors ligne"></button></div>' +
+    '<div class="card env"><b>📤 ' + n + ' boîte(s) à envoyer</b><div class="mini">' + (n ? 'Elles partiront dès que vous serez en ligne.' : 'Rien à envoyer.') + '</div>' +
+    (n ? '<button class="btn" onclick="fermerSheet();envoyerClic()"' + (tel ? '' : ' disabled') + '>Envoyer maintenant</button>' + (tel ? '' : '<div class="mini">Aucun réseau détecté.</div>') : '') + '</div>' +
+    '<div class="mini">ℹ️ Une page web ne peut pas couper la 4G/5G ou le Wi-Fi : pour les couper, utilisez les réglages du téléphone. Sans réseau, l’application bascule seule en mode hors ligne.</div>' +
+    '<button class="btn sec" onclick="fermerSheet()">Fermer</button>');
+}
+function basculerHL() {
+  HL = !HL; LS.setItem('ab_hl', HL ? '1' : '0'); majNet();
+  if (HL) { ouvrirNet(); return; }
+  fermerSheet(); RESO = true; majNet();
+  if (nAEnv()) envoyerClic(); else if (MIS && OP) accueil('', 'Retour en ligne.');
+}
+var toastT = null;
+function toast(t) { var e = $('#toast'); e.textContent = t; e.classList.remove('hid'); clearTimeout(toastT); toastT = setTimeout(function () { e.classList.add('hid'); }, 3500); }
+function demander(txt, oui, cb) {
+  window.__dem = cb;
+  sheet('<h3>' + esc(txt) + '</h3><button class="btn" onclick="fermerSheet();var f=window.__dem;window.__dem=null;f&&f()">' + esc(oui) + '</button><button class="btn sec" onclick="fermerSheet()">Non</button>');
+}
+majNet();
 
 if ('serviceWorker' in navigator) { try { navigator.serviceWorker.register('sw.js'); } catch (e) {} }
 demarrer();
